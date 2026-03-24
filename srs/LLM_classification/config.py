@@ -16,7 +16,7 @@ class Config:
     MODEL_PATH = "weights/model.pt"
 
     # model params
-    GPT_WEIGHTS_PATH = "model/gpt_trained_weights"
+    GPT_WEIGHTS_PATH = "gpt_trained_weights"
     MODEL_NAME = "gpt2"
     MODEL_TYPE = "gpt2-small (124M)"
     BASE_CONFIG  = {
