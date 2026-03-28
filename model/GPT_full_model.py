@@ -51,7 +51,7 @@ class GPT2Manager:
 
         self.model.out_head = new_out_head
 
-        # --- weight tying (ВАЖНО) ---
+        # --- weight tying ---
         self.model.out_head.weight = self.model.tok_emb.weight
 
     def prepare_model(self, tokenizer):
@@ -74,7 +74,6 @@ class GPT2Manager:
 
             self.resize_token_embeddings(new_vocab_size)
 
-            # обновляем конфиг
             self.base_config["vocab_size"] = new_vocab_size
 
         return self.model
