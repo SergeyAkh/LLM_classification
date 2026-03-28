@@ -12,7 +12,6 @@ else:
     # Fallback
     PROJECT_ROOT = Path.cwd().parent
 
-
 class Config:
     # Class attributes (доступны через Config.ATTR)
     DEBUG = True
@@ -25,9 +24,9 @@ class Config:
 
     alpaca_ds = "hf://datasets/yahma/alpaca-cleaned/alpaca_data_cleaned.json"
 
-
+    PROJECT_ROOT = PROJECT_ROOT
     # paths - используем PROJECT_ROOT для полных путей
-    DATA_RAW_PATH = PROJECT_ROOT / "data" / "raw"
+    DATA_RAW_PATH = PROJECT_ROOT / "dataset" / "data" / "raw"
     MODEL_PATH = PROJECT_ROOT / "weights" / "model.pt"
 
     # model params
@@ -55,4 +54,3 @@ class Config:
         config = cls.BASE_CONFIG.copy()
         config.update(cls.MODEL_CONFIG[cls.MODEL_TYPE])
         return config
-
