@@ -3,11 +3,13 @@ import zipfile
 import os
 import ssl
 from pathlib import Path
+import math
 from srs.LLM_classification.config import Config
 import pandas as pd
 from datasets import load_dataset
 import importlib
 import srs.LLM_classification.config as cfg
+from collections import defaultdict
 
 importlib.reload(cfg)
 
@@ -22,86 +24,71 @@ def alpaca_df(Config) -> pd.DataFrame:
 
 alp_df = alpaca_df(Config)
 
+def oasst1_df(Config) -> pd.DataFrame:
+    path_tr = os.path.join(Config.DATA_RAW_PATH, 'oasst1_train.json')
+    path_val = os.path.join(Config.DATA_RAW_PATH, 'oasst1_val.json')
+    if os.path.exists(path_val) & os.path.exists(path_tr):
+        df_tr = pd.read_json(path_tr, lines=True)
+        df_val = pd.read_json(path_val, lines=True)
+
+    else:
+        oasst1_df = load_dataset(Config.oasst_ds)
+        df_tr = oasst1_df["train"]
+        df_val = oasst1_df["validation"]
+        oasst1_df["train"].to_json(os.path.join(Config.DATA_RAW_PATH, 'oasst1_train.json'))
+        oasst1_df["validation"].to_json(os.path.join(Config.DATA_RAW_PATH, 'oasst1_val.json'))
+    df_tr = df_tr[["message_id", "parent_id", "text", "role"]]
+    df_val = df_val[["message_id", "parent_id", "text", "role"]]
+
+    return df_tr, df_val
+
+def is_nan(x):
+    return x is None or (isinstance(x, float) and math.isnan(x))
+
+def build_conv(node, path):
+    path = path + [node]
+
+    if node["message_id"] not in children:
+        return [path]
+
+    convs = []
+    for child in children[node["message_id"]]:
+        convs.extend(build_conv(child, path))
+
+    return convs
 
 
+df_tr, df_val = oasst1_df(Config)
 
-oasst1_df = load_dataset("OpenAssistant/oasst1")
+children = defaultdict(list)
 
-oasst1_train = pd.DataFrame(oasst1_df["train"])
-
-
-
-df_filtered = oasst1_train[oasst1_train['role'].isin(['prompter', 'assistant'])].copy()
-df_filtered = df_filtered.sort_values(['message_id', 'created_date'])
-pairs = []
-
-for tree_id, tree_group in df_filtered.groupby('message_id'):
-    print(tree_group)
-
-for tree_id, tree_group in df_filtered.groupby('message_id'):
-    # Создаем словарь для быстрого доступа
-    messages_dict = {}
-    for _, row in tree_group.iterrows():
-        messages_dict[row['message_id']] = row
-
-print(messages_dict)
+for _, row in df_tr.iterrows():
+    children[row["parent_id"]].append(row)
 
 
+roots = [row for _, row in df_tr.iterrows() if is_nan(row["parent_id"])]
+
+all_convs = []
+
+for root in roots:
+    all_convs.extend(build_conv(root, []))
 
 
+def format_conv(conv):
+    text = ""
 
+    for msg in conv:
+        role = msg["role"]
+        content = msg["text"].strip()
 
+        if role == "prompter":
+            text += f"<|user|> {content}\n"
+        elif role == "assistant":
+            text += f"<|assistant|> {content}\n"
 
+    return text
 
+texts = [format_conv(conv) for conv in all_convs]
 
-
-def create_user_assistant_pairs(df):
-    """
-    Создает пары (user message, assistant response)
-    с учетом иерархии диалогов
-    """
-    # Оставляем только сообщения от пользователя и ассистента
-    df_filtered = df[df['role'].isin(['prompter', 'assistant'])].copy()
-
-    # Сортируем по времени
-    df_filtered = df_filtered.sort_values(['message_id', 'created_date'])
-
-    # Создаем список пар
-    pairs = []
-
-    # Группируем по деревьям диалогов
-    for tree_id, tree_group in df_filtered.groupby('message_id'):
-        # Создаем словарь для быстрого доступа
-        messages_dict = {}
-        for _, row in tree_group.iterrows():
-            messages_dict[row['message_id']] = row
-
-        # Ищем пары (ответ ассистента → его родительское сообщение)
-        for _, row in tree_group.iterrows():
-            if row['role'] == 'assistant' and pd.notna(row['parent_id']):
-                parent_id = row['parent_id']
-
-                # Проверяем, что родитель существует и это сообщение пользователя
-                if parent_id in messages_dict:
-                    parent_msg = messages_dict[parent_id]
-
-                    # Проверяем, что родитель - пользователь (или можно включать другие роли)
-                    if parent_msg['role'] == 'prompter':
-                        pairs.append({
-                            'prompt': parent_msg['text'],
-                            'response': row['text'],
-                            'message_id': tree_id,
-                            'prompt_id': parent_id,
-                            'response_id': row['message_id']
-                        })
-
-    return pd.DataFrame(pairs)
-
-
-# Создаем датасет пар
-pairs_df = create_user_assistant_pairs(oasst1_train)
-print(f"Создано {len(pairs_df)} пар пользователь-ассистент")
-print(f"Уникальных деревьев: {pairs_df['message_id'].nunique()}")
-print(f"\nПример пары:")
-print(f"Пользователь: {pairs_df.iloc[0]['prompt'][:200]}...")
-print(f"Ассистент: {pairs_df.iloc[0]['response'][:200]}...")
+for i in children.keys():
+    print(i)

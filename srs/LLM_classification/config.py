@@ -23,7 +23,7 @@ class Config:
     extracted_path = "sms_spam_collection"
 
     alpaca_ds = "hf://datasets/yahma/alpaca-cleaned/alpaca_data_cleaned.json"
-
+    oasst_ds = "OpenAssistant/oasst1"
     PROJECT_ROOT = PROJECT_ROOT
     # paths - используем PROJECT_ROOT для полных путей
     DATA_RAW_PATH = PROJECT_ROOT / "dataset" / "data" / "raw"
