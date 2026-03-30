@@ -1,7 +1,10 @@
+from multiprocessing.resource_sharer import stop
+from os import abort
+
 from srs.LLM_classification.config import Config
 from model.Load_model import GPT2Loader
 from model.GPT_manual_architecture import GPTModel
-from transformers import GPT2Tokenizer
+
 import torch.nn as nn
 
 class GPT2Manager:
@@ -66,16 +69,17 @@ class GPT2Manager:
         # 🔥 New tokens
         if tokenizer is not None:
 
-            tokenizer.add_special_tokens({
-                "additional_special_tokens": ["<|user|>", "<|assistant|>"]
-            })
+            # tokenizer.add_special_tokens({
+            #     "additional_special_tokens": ["<|user|>", "<|assistant|>"]
+            # })
 
             new_vocab_size = len(tokenizer)
 
             self.resize_token_embeddings(new_vocab_size)
 
             self.base_config["vocab_size"] = new_vocab_size
-
+        else:
+            abort()
         return self.model
 
     def get_model(self, tokenizer=None):
@@ -90,6 +94,5 @@ class GPT2Manager:
 
 manager = GPT2Manager()
 
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 
 augment_model = manager.get_model(tokenizer=tokenizer)
