@@ -1,11 +1,12 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
+from functools import partial
 
 IGNORE_INDEX = -100
 
 from torch.nn.utils.rnn import pad_sequence
 
-def collate_fn(batch):
+def collate_fn(batch, tokenizer):
     input_ids = [item["input_ids"] for item in batch]
     labels = [item["labels"] for item in batch]
 
@@ -28,13 +29,12 @@ class ChatDataset(Dataset):
         user_token = "<|user|>"
 
         assistant_token_id = tokenizer.convert_tokens_to_ids(assistant_token)
+        user_token_id = tokenizer.convert_tokens_to_ids(user_token)
 
         for text in texts:  # ✅ iterate over conversations
             token_ids = tokenizer.encode(
                 text,
-                allowed_special={eos_token, user_token, assistant_token},
-                truncation=True,
-                max_length=max_length
+                allowed_special={eos_token, user_token, assistant_token}
             )
 
             # 🔥 handle short conversations
@@ -44,25 +44,51 @@ class ChatDataset(Dataset):
                 chunks = [(input_chunk, target_chunk)]
             else:
                 chunks = []
-                for i in range(0, len(token_ids) - max_length, stride):
+                for i in range(0, len(token_ids), stride):
                     input_chunk = token_ids[i:i + max_length]
+
+                    if len(input_chunk) < 2:
+                        continue
+
+                    # 🔥 enforce hard limit
+                    input_chunk = input_chunk[:max_length]
+
                     target_chunk = token_ids[i + 1:i + max_length + 1]
+
+                    min_len = min(len(input_chunk), len(target_chunk))
+                    input_chunk = input_chunk[:min_len]
+                    target_chunk = target_chunk[:min_len]
+
                     chunks.append((input_chunk, target_chunk))
 
             # 🔥 process chunks
             for input_chunk, target_chunk in chunks:
                 labels = target_chunk.copy()
 
-                # find last assistant token
-                last_assistant_idx = None
-                for j in range(len(input_chunk)):
-                    if input_chunk[j] == assistant_token_id:
-                        last_assistant_idx = j
+                in_assistant = False
+                has_valid_label = False
 
-                if last_assistant_idx is not None:
-                    labels[:last_assistant_idx + 1] = [IGNORE_INDEX] * (last_assistant_idx + 1)
-                else:
-                    labels = [IGNORE_INDEX] * len(labels)
+                for j in range(len(input_chunk)):
+                    token_id = input_chunk[j]
+
+                    if token_id == assistant_token_id:
+                        in_assistant = True
+                        labels[j] = IGNORE_INDEX
+                        continue
+
+                    if token_id == user_token_id:
+                        in_assistant = False
+                        labels[j] = IGNORE_INDEX
+                        continue
+
+                    if not in_assistant:
+                        labels[j] = IGNORE_INDEX
+                    else:
+                        has_valid_label = True  # 🔥 we actually train here
+
+                # 🔥 use THIS instead of has_assistant
+                if not has_valid_label:
+                    continue
 
                 self.input_ids.append(torch.tensor(input_chunk))
                 self.labels.append(torch.tensor(labels))
@@ -86,6 +112,6 @@ def create_dataloader_chat(tokenizer, texts, batch_size=4, max_length=1024,
         batch_size=batch_size,
         shuffle=shuffle,
         drop_last=False,
-        collate_fn=collate_fn
+        collate_fn=partial(collate_fn, tokenizer=tokenizer)
     )
 

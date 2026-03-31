@@ -66,18 +66,19 @@ class GPT2Manager:
 
         self.loader.load_weights_into_gpt(self.model)
 
+
         # 🔥 New tokens
         if tokenizer is not None:
 
-            # tokenizer.add_special_tokens({
-            #     "additional_special_tokens": ["<|user|>", "<|assistant|>"]
-            # })
+            tokenizer.add_special_tokens({
+                "additional_special_tokens": ["<|user|>", "<|assistant|>"]
+            })
 
             new_vocab_size = len(tokenizer)
 
             self.resize_token_embeddings(new_vocab_size)
 
-            self.base_config["vocab_size"] = new_vocab_size
+            # self.base_config["vocab_size"] = new_vocab_size
         else:
             abort()
         return self.model
@@ -86,13 +87,9 @@ class GPT2Manager:
         """
         Returns the model; prepare it if not yet loaded.
         """
+
         if self.model is None:
             return self.prepare_model(tokenizer)
         return self.model
 
 
-
-manager = GPT2Manager()
-
-
-augment_model = manager.get_model(tokenizer=tokenizer)

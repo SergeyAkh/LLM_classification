@@ -20,7 +20,8 @@ class GPT2Loader:
 
     # ----------------- Public Methods -----------------
     def download_and_load(self):
-        self._download_files()
+        if not os.path.exists(self.model_dir):
+            self._download_files()
         self._load_params()
         return self.settings, self.params
 
