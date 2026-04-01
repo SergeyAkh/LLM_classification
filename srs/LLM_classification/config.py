@@ -1,19 +1,15 @@
 from pathlib import Path
 import sys
 
-# Определяем PROJECT_ROOT для разных сред выполнения
 if hasattr(sys, 'ps1') or 'ipykernel' in sys.modules:
-    # Интерактивная консоль или Jupyter
     PROJECT_ROOT = Path.cwd().parent
 elif '__file__' in globals():
-    # Запуск как скрипт
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
 else:
-    # Fallback
     PROJECT_ROOT = Path.cwd().parent
 
 class Config:
-    # Class attributes (доступны через Config.ATTR)
+
     DEBUG = True
     APP_NAME = "My App"
 

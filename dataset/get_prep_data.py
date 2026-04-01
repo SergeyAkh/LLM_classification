@@ -3,18 +3,19 @@ import math
 import pandas as pd
 from datasets import load_dataset
 import importlib
-import srs.LLM_classification.config as cfg
+
 from collections import defaultdict
-import dataset.Dataset_dataloader as DS
 
-importlib.reload(cfg)
 
-def alpaca_df(Config) -> pd.DataFrame:
-    path = os.path.join(Config.DATA_RAW_PATH, 'alpaca_data_cleaned.json')
+def alpaca_df(config) -> pd.DataFrame:
+
+    path = os.path.join(config.DATA_RAW_PATH, 'alpaca_data_cleaned.json')
     if os.path.exists(path):
+
         df = pd.read_json(path)
     else:
-        df = pd.read_json(Config.alpaca_ds)
+        os.makedirs(config.DATA_RAW_PATH, exist_ok=True)
+        df = pd.read_json(config.alpaca_ds)
         df.to_json(path)
 
 
@@ -34,21 +35,41 @@ def alpaca_df(Config) -> pd.DataFrame:
     df_new = df.drop(["instruction", "input","user_text","full_text","output"], axis=1)
     return df_new
 
-def oasst1_df(Config) -> pd.DataFrame:
-    path_tr = os.path.join(Config.DATA_RAW_PATH, 'oasst1_train.json')
-    path_val = os.path.join(Config.DATA_RAW_PATH, 'oasst1_val.json')
-    if os.path.exists(path_val) & os.path.exists(path_tr):
+
+def oasst1_df(config) -> tuple[pd.DataFrame, pd.DataFrame]:
+    path_tr = os.path.join(config.DATA_RAW_PATH, 'oasst1_train.json')
+    path_val = os.path.join(config.DATA_RAW_PATH, 'oasst1_val.json')
+
+    cols = ["message_id", "parent_id", "text", "role", "message_tree_id", "rank", "created_date"]
+
+    if (not os.path.exists(path_tr)) or (not os.path.exists(path_val)):
+        os.makedirs(config.DATA_RAW_PATH, exist_ok=True)
+
+        ds = load_dataset(config.oasst_ds)
+
+        df_tr = ds["train"].to_pandas()
+        df_val = ds["validation"].to_pandas()
+
+        df_tr.to_json(path_tr, orient="records", lines=True)
+        df_val.to_json(path_val, orient="records", lines=True)
+
+    else:
         df_tr = pd.read_json(path_tr, lines=True)
         df_val = pd.read_json(path_val, lines=True)
 
-    else:
-        oasst1_df = load_dataset(Config.oasst_ds)
-        df_tr = oasst1_df["train"]
-        df_val = oasst1_df["validation"]
-        oasst1_df["train"].to_json(os.path.join(Config.DATA_RAW_PATH, 'oasst1_train.json'))
-        oasst1_df["validation"].to_json(os.path.join(Config.DATA_RAW_PATH, 'oasst1_val.json'))
-    df_tr = df_tr[["message_id", "parent_id", "text", "role", "message_tree_id", "rank", "created_date"]]
-    df_val = df_val[["message_id", "parent_id", "text", "role", "message_tree_id", "rank", "created_date"]]
+    # 🔥 защита от Dataset
+    if not isinstance(df_tr, pd.DataFrame):
+        df_tr = df_tr.to_pandas()
+
+    if not isinstance(df_val, pd.DataFrame):
+        df_val = df_val.to_pandas()
+
+    # 🔥 защита от отсутствующих колонок
+    cols_tr = [c for c in cols if c in df_tr.columns]
+    cols_val = [c for c in cols if c in df_val.columns]
+
+    df_tr = df_tr[cols_tr]
+    df_val = df_val[cols_val]
 
     return df_tr, df_val
 
@@ -206,13 +227,15 @@ def preprop_oasst(df):
     oasst_flat = pd.DataFrame({'text': all_sequences})
     return oasst_flat
 
-def get_data_preprocessed(Config) -> pd.DataFrame:
-    if os.path.exists(os.path.join(Config.PREPROC_DS, "Preprocessed_data.csv")):
-        df_all = pd.read_csv(os.path.join(Config.PREPROC_DS, "Preprocessed_data.csv"), index_col=0)
+def get_data_preprocessed(config) -> pd.DataFrame:
+    if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")):
+        df_all = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"), index_col=0)
     else:
-        alp_df = alpaca_df(Config)
+        os.makedirs(config.PREPROC_DS, exist_ok=True)
 
-        df_tr, df_val = oasst1_df(Config)
+        alp_df = alpaca_df(config)
+
+        df_tr, df_val = oasst1_df(config)
 
         oasst_all = pd.concat([df_tr, df_val], ignore_index=True)
 
@@ -220,6 +243,6 @@ def get_data_preprocessed(Config) -> pd.DataFrame:
 
         df_all = pd.concat([alp_df, oasst_df], ignore_index=True)
 
-        df_all.to_csv(os.path.join(Config.PREPROC_DS, "Preprocessed_data.csv"), index=False)
+        df_all.to_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"), index=False)
 
     return df_all

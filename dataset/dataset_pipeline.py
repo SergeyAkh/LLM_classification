@@ -1,6 +1,6 @@
 from srs.LLM_classification.config import Config
 import dataset.Dataset_dataloader as DL
-import dataset.get_prep_data as DS_prep
+import dataset.get_prep_data as ds_prep
 from transformers import GPT2Tokenizer
 from tqdm import tqdm
 
@@ -10,22 +10,20 @@ from model.GPT_full_model import GPT2Manager
 
 import dataset.Dataset_dataloader as MODEL
 import importlib
-importlib.reload(MODEL)
+importlib.reload(ds_prep)
 
 import inspect
-print(inspect.getsource(MODEL))
+print(inspect.getsource(ds_prep.oasst1_df))
 
 IGNORE_INDEX = -100
 
-# Параметры обучения
+
 EPOCHS = 3
-LEARNING_RATE = 5e-5  # Для дообучения GPT-like моделей
+LEARNING_RATE = 5e-5
 WARMUP_STEPS = 100
 GRADIENT_CLIP = 1.0
 
-
-
-df_all = DS_prep.get_data_preprocessed(Config)
+df_all = ds_prep.get_data_preprocessed(Config)
 
 tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 tokenizer.add_special_tokens({
