@@ -2,8 +2,6 @@ import os
 import math
 import pandas as pd
 from datasets import load_dataset
-import importlib
-
 from collections import defaultdict
 
 
@@ -57,14 +55,12 @@ def oasst1_df(config) -> tuple[pd.DataFrame, pd.DataFrame]:
         df_tr = pd.read_json(path_tr, lines=True)
         df_val = pd.read_json(path_val, lines=True)
 
-    # 🔥 защита от Dataset
     if not isinstance(df_tr, pd.DataFrame):
         df_tr = df_tr.to_pandas()
 
     if not isinstance(df_val, pd.DataFrame):
         df_val = df_val.to_pandas()
 
-    # 🔥 защита от отсутствующих колонок
     cols_tr = [c for c in cols if c in df_tr.columns]
     cols_val = [c for c in cols if c in df_val.columns]
 
@@ -206,8 +202,6 @@ def preprop_oasst(df):
 
     df_filtered = df_filtered.reset_index(drop=True)
 
-    # trees = dict(tuple(df_filtered.groupby("message_tree_id")))
-
     # =========================
     # 7. Main pipeline
     # =========================
@@ -229,7 +223,7 @@ def preprop_oasst(df):
 
 def get_data_preprocessed(config) -> pd.DataFrame:
     if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")):
-        df_all = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"), index_col=0)
+        df_all = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"))
     else:
         os.makedirs(config.PREPROC_DS, exist_ok=True)
 
