@@ -1,8 +1,11 @@
 # training.py
 from dataset.dataset_pipeline import dataloader, tokenizer, df_all
 from srs.training.help_func import predict
+
+
+import dataset.dataset_pipeline as ds_pipeline
 import importlib
-importlib.reload(srs.training.help_func)
+importlib.reload(ds_pipeline)
 
 from torch.nn import CrossEntropyLoss
 from model.GPT_full_model import GPT2Manager
@@ -19,26 +22,57 @@ else:
    device = torch.device("cpu")
 
 
-
-
 LEARNING_RATE = 5e-5
 WARMUP_STEPS = 100
 GRADIENT_CLIP = 1.0
 IGNORE_INDEX = -100
-batch_size = 1
+batch_size = 2
 max_length = 512
 stride = 256
-shuffle = True
+shuffle = False
 
 data_preproc = df_all["text"].tolist()
 
-conversation =         ["""<|user|> Give three tips for staying healthy.
+data_preproc =         ["""<|user|> Give three tips for staying healthy.
 <|assistant|> 1. Eat a balanced and nutritious diet...
 2. Engage in regular physical activity...
-3. Get enough sleep...<|endoftext|>""","""<|user|> What about mental health?
+3. Get enough sleep...<|user|> What about mental health?
 <|assistant|> Mental health is equally important! Practice mindfulness, maintain social connections, and seek help when needed.<|endoftext|>"""
     ]
 dataloader = dataloader(data_preproc, tokenizer, batch_size, max_length, stride, shuffle)
+
+batch = next(iter(dataloader))
+
+input_ids = batch["input_ids"][0]
+labels = batch["labels"][0]
+
+decoded_input = tokenizer.decode(input_ids.tolist())
+
+print("=== INPUT TEXT ===")
+print(decoded_input)
+
+print("\n=== TOKENS ===")
+print(input_ids.tolist())
+
+print("\n=== LABELS ===")
+print(labels.tolist())
+
+print("\n=== TOKEN | LABEL ===")
+for token_id, label_id in zip(input_ids.tolist(), labels.tolist()):
+    token = tokenizer.decode([token_id])
+    label = tokenizer.decode([label_id]) if label_id != IGNORE_INDEX else "IGN"
+
+    print(f"{repr(token):>10} -> {label}")
+
+
+
+
+
+
+
+
+
+
 
 test_prompt = ["""<|user|>Give three tips for staying healthy<|assistant|>"""]
 
@@ -58,6 +92,15 @@ logits = model(in_idx=input_ids)
 pred_ids = torch.argmax(logits, dim=-1)
 
 print(tokenizer.decode(input_ids))
+
+
+
+
+
+
+
+
+
 
 EPOCHS = 101
 loss_history = []

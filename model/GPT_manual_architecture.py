@@ -1,4 +1,4 @@
-
+# GPT_manual_architecture
 import torch.nn as nn
 import torch
 

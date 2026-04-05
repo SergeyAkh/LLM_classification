@@ -57,26 +57,39 @@ class CorrectChatDataset(Dataset):
             input_tokens = chunk_tokens[:-1]
             target_tokens = chunk_tokens[1:]
 
-            labels = target_tokens.copy()
+            # 🔥 НОВАЯ логика labels
+            labels = [IGNORE_INDEX] * len(target_tokens)
 
-            chunk_assistant_positions = [
-                pos - start for pos in assistant_positions
-                if start <= pos < end
-            ]
+            current_role = None
+            print("here")
+            for i, token_id in enumerate(input_tokens):
 
-            if not chunk_assistant_positions:
+                if token_id == self.assistant_token_id:
+                    current_role = "assistant"
+                    continue
+
+                elif token_id == self.user_token_id:
+                    current_role = "user"
+                    continue
+                else:
+                    if current_role == "assistant":
+                        if target_tokens[i] in [self.user_token_id]:
+                            continue
+                        labels[i] = target_tokens[i]
+
+            # если вообще нет обучающих токенов — пропускаем
+            if all(l == IGNORE_INDEX for l in labels):
                 continue
 
-            last_assistant_idx = max(chunk_assistant_positions)
-
-            if last_assistant_idx < len(labels):
-
-                labels[:last_assistant_idx] = [IGNORE_INDEX] * (last_assistant_idx + 1)
-
+            # ✅ append остаётся как был
             min_len = min(len(input_tokens), len(labels))
             if min_len > 0:
-                self.input_ids.append(torch.tensor(input_tokens[:min_len], dtype=torch.long))
-                self.labels.append(torch.tensor(labels[:min_len], dtype=torch.long))
+                self.input_ids.append(
+                    torch.tensor(input_tokens[:min_len], dtype=torch.long)
+                )
+                self.labels.append(
+                    torch.tensor(labels[:min_len], dtype=torch.long)
+                )
 
     def __len__(self):
         return len(self.input_ids)
