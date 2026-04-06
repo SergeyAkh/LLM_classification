@@ -10,21 +10,46 @@ import torch.nn.functional as F
 # import inspect
 # print(inspect.getsource(ds_prep.oasst1_df))
 
-def predict(model, texts, tokenizer):
-    predictions = []
-    for text_idx, text in enumerate(texts):
-        full_tokens = tokenizer.encode(
-            text,
-            allowed_special={"<|user|>", "<|assistant|>", "<|endoftext|>"},
-            add_special_tokens=False
-        )
 
-        full_tokens = torch.tensor(full_tokens).unsqueeze(0)
-        logits = model(in_idx=full_tokens)
-        pred_ids = torch.argmax(logits, dim=-1)
-        pred = tokenizer.decode(pred_ids)
-        predictions.append(pred)
-    return predictions
+def temp_predict(model, prompt, tokenizer, device, temperature):
+    model.eval()
+    assistant_token_id = tokenizer.convert_tokens_to_ids("<|assistant|>")
+    prompt = f"<|user|> {prompt} <|assistant|>"
+    input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
+
+    with torch.no_grad():
+        for _ in range(50):
+            logits = model(input_ids)
+
+            logits = logits[:, -1, :] / temperature
+            probs = F.softmax(logits, dim=-1)
+
+            next_token = torch.multinomial(probs, num_samples=1)
+
+            input_ids = torch.cat([input_ids, next_token], dim=1)
+
+            if next_token.item() == tokenizer.eos_token_id:
+                break
+    input_ids = input_ids[:, (input_ids[0] == assistant_token_id).nonzero(as_tuple=True)[0][0] + 1:]
+    return tokenizer.decode(input_ids[0])
+
+def greedy_predict(model, prompt, tokenizer,device):
+    model.eval()
+    assistant_token_id = tokenizer.convert_tokens_to_ids("<|assistant|>")
+    prompt = f"<|user|> {prompt} <|assistant|>"
+    input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
+
+    with torch.no_grad():
+        for _ in range(50):
+            logits = model(input_ids)
+            next_token = torch.argmax(logits[:, -1, :], dim=-1)
+
+            input_ids = torch.cat([input_ids, next_token.unsqueeze(0)], dim=1)
+            if next_token.item() == tokenizer.eos_token_id:
+                break
+
+    input_ids = input_ids[:, (input_ids[0] == assistant_token_id).nonzero(as_tuple=True)[0][0] + 1:]
+    return tokenizer.decode(input_ids[0])
 
 
 
