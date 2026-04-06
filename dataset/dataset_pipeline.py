@@ -1,4 +1,6 @@
 # dataset_pipeline.py
+from torch.utils.data.datapipes.dataframe.dataframe_wrapper import iterate
+
 from srs.LLM_classification.config import Config
 import dataset.Dataset_dataloader as DL
 import dataset.get_prep_data as ds_prep
@@ -37,7 +39,7 @@ LEARNING_RATE = 5e-5
 WARMUP_STEPS = 100
 GRADIENT_CLIP = 1.0
 IGNORE_INDEX = -100
-batch_size = 2
+batch_size = 4
 max_length = 512
 stride = 256
 shuffle = False
@@ -46,12 +48,16 @@ data_preproc =         ["""<|user|> Give three tips for staying healthy.
 <|assistant|> 1. Eat a balanced and nutritious diet...
 2. Engage in regular physical activity...
 3. Get enough sleep...<|user|> What about mental health?
-<|assistant|> Mental health is equally important! Practice mindfulness, maintain social connections, and seek help when needed.<|endoftext|>"""
-    ]
+<|assistant|> Mental health is equally important! Practice mindfulness, maintain social connections, and seek help when needed.<|endoftext|>""",
+"""<|user|> What are the three primary colors?\n<|assistant|> The three primary colors are red, blue, and yellow. These colors are called primary because they cannot be created by mixing other colors and all other colors can be made by combining them in various proportions. In the additive color system, used for light, the primary colors are red, green, and blue (RGB).<|endoftext|>
+"""]
+
+data_preproc.append(df_all["text"][2:5].tolist())
+new_df = df_all["text"][2:5].tolist()
 
 dataloader_func = DL.create_correct_dataloader(
     tokenizer=tokenizer,
-    texts=data_preproc,
+    texts=new_df,
     batch_size=batch_size,
     max_length=max_length,
     stride=stride,
@@ -61,11 +67,9 @@ dataloader_func = DL.create_correct_dataloader(
 
 batch = next(iter(dataloader_func))
 
-input_ids = batch["input_ids"][0]
-labels = batch["labels"][0]
-# print(input_ids)
-# print(input_ids[:-1])
-# print(input_ids[1:])
+input_ids = batch["input_ids"][2]
+labels = batch["labels"][2]
+
 decoded_input = tokenizer.decode(input_ids.tolist())
 
 print("=== INPUT TEXT ===")
@@ -87,17 +91,19 @@ for token_id, label_id in zip(input_ids.tolist(), labels.tolist()):
 
 
 
+
 device = torch.device("cpu")
 manager = GPT2Manager()
 model = manager.get_model(tokenizer=tokenizer)
 model = model.to(device)
+
 
 model.train()
 
 optimizer = AdamW(model.parameters(), lr=5e-5)
 criterion = CrossEntropyLoss(ignore_index=-100)
 
-EPOCHS = 100
+EPOCHS = 50
 
 for epoch in range(EPOCHS):
     print(f"\n=== Epoch {epoch+1} ===")
@@ -129,16 +135,15 @@ for epoch in range(EPOCHS):
 
         total_loss += loss.item()
 
-        # 🔍 debug каждые N шагов
         if step % 10 == 0:
             print(f"step {step} | loss: {loss.item():.4f}")
 
-    avg_loss = total_loss / len(dataloader)
+    avg_loss = total_loss / len(dataloader_func)
     print(f"Epoch {epoch+1} avg loss: {avg_loss:.4f}")
 
 model.eval()
 
-prompt = "<|user|> Give tips\n<|assistant|>"
+prompt = "<|user|> structure of an atom <|assistant|>"
 input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
 
 with torch.no_grad():

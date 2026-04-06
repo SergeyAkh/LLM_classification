@@ -57,15 +57,15 @@ class CorrectChatDataset(Dataset):
             input_tokens = chunk_tokens[:-1]
             target_tokens = chunk_tokens[1:]
 
-            # 🔥 НОВАЯ логика labels
             labels = [IGNORE_INDEX] * len(target_tokens)
 
             current_role = None
-            print("here")
+
             for i, token_id in enumerate(input_tokens):
 
                 if token_id == self.assistant_token_id:
                     current_role = "assistant"
+                    labels[i] = target_tokens[i]
                     continue
 
                 elif token_id == self.user_token_id:
@@ -77,11 +77,9 @@ class CorrectChatDataset(Dataset):
                             continue
                         labels[i] = target_tokens[i]
 
-            # если вообще нет обучающих токенов — пропускаем
             if all(l == IGNORE_INDEX for l in labels):
                 continue
 
-            # ✅ append остаётся как был
             min_len = min(len(input_tokens), len(labels))
             if min_len > 0:
                 self.input_ids.append(
