@@ -75,7 +75,6 @@ class MultiHeadAttention(nn.Module):
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
 
-
         attn_scores = queries @ keys.transpose(2, 3)
 
         mask_bool = self.mask.bool()[:num_tokens, :num_tokens]

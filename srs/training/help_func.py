@@ -51,7 +51,29 @@ def greedy_predict(model, prompt, tokenizer,device):
     input_ids = input_ids[:, (input_ids[0] == assistant_token_id).nonzero(as_tuple=True)[0][0] + 1:]
     return tokenizer.decode(input_ids[0])
 
+def inspect_one_example(dataloader, tokenizer, IGNORE_INDEX):
+    batch = next(iter(dataloader))
 
+    input_ids = batch["input_ids"][2]
+    labels = batch["labels"][2]
+
+    decoded_input = tokenizer.decode(input_ids.tolist())
+
+    print("=== INPUT TEXT ===")
+    print(decoded_input)
+
+    print("\n=== TOKENS ===")
+    print(input_ids.tolist())
+
+    print("\n=== LABELS ===")
+    print(labels.tolist())
+
+    print("\n=== TOKEN | LABEL ===")
+    for token_id, label_id in zip(input_ids.tolist(), labels.tolist()):
+        token = tokenizer.decode([token_id])
+        label = tokenizer.decode([label_id]) if label_id != IGNORE_INDEX else "IGN"
+
+        print(f"{repr(token):>10} -> {label}")
 
 def inspect_sample_detailed(batch, tokenizer, batch_idx, sample_idx, INDEX):
     """Детальная проверка сэмпла"""

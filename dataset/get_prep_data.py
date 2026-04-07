@@ -25,9 +25,9 @@ def alpaca_df(config) -> pd.DataFrame:
 
     df['full_text'] = (
             df['user_text'] +
-            "\n<|assistant|> " +
+            " <|assistant|> " +
             df['output'] +
-            "\n<|endoftext|>"
+            " <|endoftext|>"
     )
     df["text"] = df[['full_text']]
     df_new = df.drop(["instruction", "input","user_text","full_text","output"], axis=1)

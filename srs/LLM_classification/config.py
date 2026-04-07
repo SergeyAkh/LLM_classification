@@ -28,6 +28,7 @@ class Config:
 
     # model params
     GPT_WEIGHTS_PATH = PROJECT_ROOT / "gpt_trained_weights"
+    MODEL_WEIGHTS_PATH = PROJECT_ROOT / "model_trained_weights"
     MODEL_NAME = "gpt2"
     MODEL_TYPE = "gpt2-small (124M)"
 
