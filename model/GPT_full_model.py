@@ -1,12 +1,15 @@
-from multiprocessing.resource_sharer import stop
-from os import abort
+# GPT_full_model.py
 
+from os import abort
 from srs.LLM_classification.config import Config
 from model.Load_model import GPT2Loader
-from model.GPT_manual_architecture import GPTModel
-
+from model.GPT_manual_architecture import GPTModel, MultiHeadAttention
+from model.LoRA import LoRALinear
 import torch.nn as nn
 
+# import importlib
+# import model.LoRA as hf
+# importlib.reload(hf)
 class GPT2Manager:
     """
     Handles GPT-2 model initialization:
@@ -15,8 +18,11 @@ class GPT2Manager:
     - Builds PyTorch GPT model
     """
 
-    def __init__(self):
+    def __init__(self, use_lora=True, r=8, alpha = 1):
         # Load configuration
+        self.r = r
+        self.alpha = alpha
+        self.use_lora = use_lora
         self.path = Config.GPT_WEIGHTS_PATH
         self.model_type = Config.MODEL_TYPE
         self.base_config = Config.BASE_CONFIG
@@ -57,6 +63,37 @@ class GPT2Manager:
         # --- weight tying ---
         self.model.out_head.weight = self.model.tok_emb.weight
 
+    def freeze_except_lora(self, model):
+        for name, param in model.named_parameters():
+            if "A" in name or "B" in name or "norm" in name:
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+
+    def apply_lora(self, model, enabled=True):
+
+        for module in model.modules():
+            if isinstance(module, MultiHeadAttention):
+                module.W_query = LoRALinear(
+                    module.W_query, r=self.r, alpha=self.alpha
+                )
+                module.W_query.enabled = enabled
+
+                # module.W_key = LoRALinear(
+                #     module.W_key, r=self.r, alpha=self.alpha
+                # )
+                # module.W_key.enabled = enabled
+
+                module.W_value = LoRALinear(
+                    module.W_value, r=self.r, alpha=self.alpha
+                )
+                module.W_value.enabled = enabled
+
+                # module.out_proj = LoRALinear(
+                #     module.out_proj, r=self.r, alpha=self.alpha
+                # )
+                # module.out_proj.enabled = enabled
+
     def prepare_model(self, tokenizer):
         self.loader = GPT2Loader(model_size=self.model_size, models_dir=self.path)
 
@@ -66,6 +103,9 @@ class GPT2Manager:
 
         self.loader.load_weights_into_gpt(self.model)
 
+        if self.use_lora:
+            self.apply_lora(self.model, enabled=True)
+            self.freeze_except_lora(self.model)
 
         # 🔥 New tokens
         if tokenizer is not None:
@@ -77,7 +117,8 @@ class GPT2Manager:
             new_vocab_size = len(tokenizer)
 
             self.resize_token_embeddings(new_vocab_size)
-
+            if self.use_lora:
+                self.freeze_except_lora(self.model)
             # self.base_config["vocab_size"] = new_vocab_size
         else:
             abort()
@@ -91,5 +132,7 @@ class GPT2Manager:
         if self.model is None:
             return self.prepare_model(tokenizer)
         return self.model
+
+
 
 

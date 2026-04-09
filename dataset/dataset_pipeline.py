@@ -1,4 +1,5 @@
 # dataset_pipeline.py
+
 from srs.LLM_classification.config import Config
 import dataset.Dataset_dataloader as DL
 import dataset.get_prep_data as ds_prep
@@ -10,11 +11,12 @@ from tqdm import tqdm
 from torch.nn import CrossEntropyLoss
 from model.GPT_full_model import GPT2Manager
 import os
+
 import importlib
-import srs.training.help_func as hf
+import model.GPT_full_model as hf
 importlib.reload(hf)
-from srs.training.help_func import greedy_predict, temp_predict
-os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '1.0'
+from srs.training.help_func import greedy_predict, temp_predict, leyers_with_grad
+# os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '1.0'
 df_all = ds_prep.get_data_preprocessed(Config)
 
 tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
@@ -23,38 +25,27 @@ tokenizer.add_special_tokens({
     "additional_special_tokens": ["<|user|>", "<|assistant|>"]
 })
 
-def dataloader(data, tokenizer_func, batch_size, max_length, stride, shuffle):
-    dataloader_func = DL.create_correct_dataloader(
-        tokenizer=tokenizer_func,
-        texts=data,
-        batch_size=batch_size,
-        max_length=max_length,
-        stride=stride,
-        shuffle=shuffle
-    )
-    return dataloader_func
+LEARNING_RATE = 1e-3
 
-LEARNING_RATE = 5e-5
-WARMUP_STEPS = 100
-GRADIENT_CLIP = 1.0
 IGNORE_INDEX = -100
 batch_size = 4
 max_length = 512
 stride = 256
 shuffle = False
 
-df_grather = df_all[df_all["text"].str.len() > 1024]
-new_df = df_all["text"][-5:].tolist()
+
+new_df = df_all["text"][:3].tolist()
 
 dataloader_func = DL.create_correct_dataloader(
     tokenizer=tokenizer,
-    texts=df_all["text"].tolist(),
+    texts=
+    df_all["text"].tolist(),
+# new_df,
     batch_size=batch_size,
     max_length=max_length,
     stride=stride,
     shuffle=shuffle
 )
-
 
 
 if torch.cuda.is_available():
@@ -64,31 +55,81 @@ elif torch.backends.mps.is_available():
 else:
    device = torch.device("cpu")
 
-manager = GPT2Manager()
+
+manager = GPT2Manager(use_lora=True, r=8,alpha=8)
 model = manager.get_model(tokenizer=tokenizer)
 model = model.to(device)
 
-optimizer = AdamW(model.parameters(), lr=5e-5)
-criterion = CrossEntropyLoss(ignore_index=-100)
+optimizer = AdamW(
+    filter(lambda p: p.requires_grad, model.parameters()),
+    lr=LEARNING_RATE
+)
+
+criterion = CrossEntropyLoss(ignore_index=IGNORE_INDEX)
+
 start_epoch = 0
 start_step = 0
-EPOCHS = 1
+EPOCHS = 100
 SAVE_EVERY_STEPS = 500
-accum_steps = 4
 
-CHECKPOINT_PATH = Config.MODEL_WEIGHTS_PATH +  "checkpoint.pt"
+
+leyers_with_grad(model)
+
+for name, param in model.named_parameters():
+    if "A" in name or "B" in name:
+        param.requires_grad = True
+        print(f"{name} -> {param.requires_grad}")
+    else:
+        param.requires_grad = False
+
+        # print(f"{name} -> {param.requires_grad}")
+
+from model.LoRA import LoRALinear
+for module in model.modules():
+    if isinstance(module, LoRALinear):
+        module.A.requires_grad = True
+        module.B.requires_grad = True
+
+for name, p in model.named_parameters():
+    if p.requires_grad:
+        print(name)
+
+trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print("Trainable params:", trainable)
+for p in model.parameters():
+    if p.requires_grad:
+        print(p)
+
+model.train()
+
+from model.LoRA import LoRALinear
+with torch.no_grad():
+    for name, module in model.named_modules():
+        if isinstance(module, LoRALinear):
+            print(name, module.A.abs().mean().item(), module.B.abs().mean().item())
+
+for name, module in model.named_modules():
+    if isinstance(module, LoRALinear):
+        if torch.isnan(module.A).any() or torch.isnan(module.B).any():
+            print("NaN detected in", name)
+
+batch = next(iter(dataloader_func))
+input_ids = batch["input_ids"].to(device)
+labels = batch["labels"].to(device)
+logits = model(input_ids)
+loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+print("Initial batch loss:", loss.item())
+
+CHECKPOINT_PATH = Config.MODEL_WEIGHTS_PATH / "checkpoint_LoRA.pt"
 if os.path.exists(CHECKPOINT_PATH):
     print(f"Loading checkpoint from {CHECKPOINT_PATH}")
     checkpoint = torch.load(CHECKPOINT_PATH)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    start_epoch = checkpoint["epoch"]
-    start_step = checkpoint["step"]
-    device = checkpoint["device"]
+    model.load_state_dict(checkpoint["model_state"])
+    optimizer.load_state_dict(checkpoint["optimizer_state"])
+    start_epoch = checkpoint.get("epoch",0)
+    start_step = checkpoint.get("step", 0)
+    device = checkpoint.get("device","mps")
     print(f"Resuming from epoch {start_epoch}, step {start_step}")
-
-model.train()
-global_step = start_step
 
 for epoch in range(start_epoch, EPOCHS):
     print(f"\n=== Epoch {epoch+1} ===")
@@ -108,54 +149,51 @@ for epoch in range(start_epoch, EPOCHS):
             logits.view(-1, logits.size(-1)),
             labels.view(-1)
         )
-        loss = loss / accum_steps
+
         # backward
         loss.backward()
-        global_step += 1
-        if (step + 1) % accum_steps == 0:
-            optimizer.zero_grad(set_to_none=True)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-        # gradient clipping
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         # optimizer.step()
-        # optimizer.zero_grad(set_to_none=True)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+
         total_loss += loss.item()
 
-        if step % 20 == 0:
+        if step % 500 == 0 and step > 0:
             torch.mps.empty_cache()
-
         # -----------------------------
         # Save checkpoint every N steps
         # -----------------------------
-        if global_step % SAVE_EVERY_STEPS == 0:
+        if step % SAVE_EVERY_STEPS == 0 and step > 0:
             torch.save({
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
+                "model_state": model.state_dict(),
+                "optimizer_state": optimizer.state_dict(),
                 "epoch": epoch,
                 "step": step,
                 "device": device
             }, CHECKPOINT_PATH)
-            print(f"Checkpoint saved at step {global_step}")
+            loss_checkpoint = total_loss / len(dataloader_func)
+            print(f"Checkpoint saved at step {step}, loss: {loss_checkpoint:.4f}")
 
     avg_loss = total_loss / len(dataloader_func)
     print(f"Epoch {epoch+1} avg loss: {avg_loss:.4f}")
-
-torch.save({
+    step = 0
+    torch.save({
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
-        "epoch": start_epoch + epoch + 1,
+        "epoch": epoch + 1,
+        "step": step,
         "device": device
-    }, Config.MODEL_WEIGHTS_PATH + "checkpoint.pt")
-# Save model weights
-torch.save(model.state_dict(), Config.MODEL_WEIGHTS_PATH + "model.pt")
+    }, CHECKPOINT_PATH)
 
-# (optional but recommended) save optimizer state
-torch.save(optimizer.state_dict(), Config.MODEL_WEIGHTS_PATH + "optimizer.pt")
-
-prompt = "The structure of an atom:"
+prompt = "Capital of France?"
 
 print(temp_predict(model, prompt, tokenizer, device, temperature = 0.8))
 
 print(tokenizer.add_special_tokens())
+
+
+
+
+

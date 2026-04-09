@@ -9,29 +9,78 @@ import torch.nn.functional as F
 
 # import inspect
 # print(inspect.getsource(ds_prep.oasst1_df))
+# from model.LoRA import LoRALinear
+#
+# with torch.no_grad():
+#     for name, module in model.named_modules():
+#         if isinstance(module, LoRALinear):
+#             print(name, module.A.abs().mean().item(), module.B.abs().mean().item())
+
+def save_checkpoint(
+        model,
+        optimizer,
+        path: str ,
+        epoch: int,
+        step: int,
+        device: str = None
+) -> None:
+    """Save model and optimizer checkpoint."""
+    checkpoint = {
+        "model_state": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "epoch": epoch,
+        "step": step,
+        "device": device or str(next(model.parameters()).device)
+    }
+    torch.save(checkpoint, path)
 
 
-def temp_predict(model, prompt, tokenizer, device, temperature):
+def load_checkpoint(
+        model,
+        optimizer,
+        path: str,
+        map_location: str = None,
+
+):
+    """Load checkpoint and return state."""
+    checkpoint = torch.load(path, map_location=map_location)
+
+    model.load_state_dict(checkpoint["model_state"])
+
+    start_epoch = checkpoint.get("epoch", 0)
+    start_step = checkpoint.get("step", 0)
+    device = checkpoint.get("device", "cpu")
+
+    if optimizer:
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+
+    return model, optimizer, start_epoch, start_step, device
+
+def leyers_with_grad(model):
+    for name, p in model.named_parameters():
+        print(f"{name} -> {p.requires_grad}")
+
+def temp_predict(model, prompt, tokenizer, device, temperature=1.0, max_new_tokens=50):
     model.eval()
-    assistant_token_id = tokenizer.convert_tokens_to_ids("<|assistant|>")
+
     prompt = f"<|user|> {prompt} <|assistant|>"
     input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
 
     with torch.no_grad():
-        for _ in range(50):
+        for _ in range(max_new_tokens):
             logits = model(input_ids)
-
             logits = logits[:, -1, :] / temperature
-            probs = F.softmax(logits, dim=-1)
 
+            probs = F.softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
 
             input_ids = torch.cat([input_ids, next_token], dim=1)
 
             if next_token.item() == tokenizer.eos_token_id:
                 break
-    input_ids = input_ids[:, (input_ids[0] == assistant_token_id).nonzero(as_tuple=True)[0][0] + 1:]
-    return tokenizer.decode(input_ids[0])
+    decoded = tokenizer.decode(input_ids[0])
+    return decoded.split("<|assistant|>")[-1]
+
 
 def greedy_predict(model, prompt, tokenizer,device):
     model.eval()

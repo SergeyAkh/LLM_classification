@@ -1,7 +1,7 @@
-# GPT_manual_architecture
+# GPT_manual_architecture.py
 import torch.nn as nn
 import torch
-
+import math
 
 class FeedForward(nn.Module):
     def __init__(self, cfg):
@@ -21,7 +21,7 @@ class GELU(nn.Module):
 
     def forward(self, x):
         return 0.5 * x * (1 + torch.tanh(
-            torch.sqrt(torch.tensor(2.0 / torch.pi)) *
+            math.sqrt(2.0 / math.pi) *
             (x + 0.044715 * torch.pow(x, 3))
         ))
 
@@ -77,7 +77,7 @@ class MultiHeadAttention(nn.Module):
 
         attn_scores = queries @ keys.transpose(2, 3)
 
-        mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
+        mask_bool = self.mask[:num_tokens, :num_tokens].to(x.device).bool()
 
         attn_scores.masked_fill_(mask_bool, -torch.inf)
 
