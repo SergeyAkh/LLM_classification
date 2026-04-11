@@ -25,13 +25,18 @@ class Config:
     PREPROC_DS = PROJECT_ROOT / "dataset" / "data" / "preprocessed"
     DATA_RAW_PATH = PROJECT_ROOT / "dataset" / "data" / "raw"
     MODEL_PATH = PROJECT_ROOT / "weights" / "model.pt"
+    # tokenizer params
+    EOS_TOKEN = "<|endoftext|>"
+    USER_TOKEN = "<|user|>"
+    ASSIST_TOKEN = "<|assistant|>"
+
 
     # model params
     GPT_WEIGHTS_PATH = PROJECT_ROOT / "gpt_trained_weights"
     MODEL_WEIGHTS_PATH = PROJECT_ROOT / "model_trained_weights"
     MODEL_NAME = "gpt2"
     MODEL_TYPE = "gpt2-small (124M)"
-
+    IGNORE_INDEX = -100
     BASE_CONFIG = {
         "vocab_size": 50257,
         "context_length": 1024,

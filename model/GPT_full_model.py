@@ -79,29 +79,20 @@ class GPT2Manager:
                 )
                 module.W_query.enabled = enabled
 
-                # module.W_key = LoRALinear(
-                #     module.W_key, r=self.r, alpha=self.alpha
-                # )
-                # module.W_key.enabled = enabled
-
                 module.W_value = LoRALinear(
                     module.W_value, r=self.r, alpha=self.alpha
                 )
                 module.W_value.enabled = enabled
 
-                # module.out_proj = LoRALinear(
-                #     module.out_proj, r=self.r, alpha=self.alpha
-                # )
-                # module.out_proj.enabled = enabled
-
-    def prepare_model(self, tokenizer):
+    def prepare_model(self, tokenizer, inference = None):
         self.loader = GPT2Loader(model_size=self.model_size, models_dir=self.path)
 
         self.settings, self.params = self.loader.download_and_load()
 
         self.model = GPTModel(self.base_config)
+        if inference is None:
 
-        self.loader.load_weights_into_gpt(self.model)
+            self.loader.load_weights_into_gpt(self.model)
 
         if self.use_lora:
             self.apply_lora(self.model, enabled=True)
@@ -109,10 +100,6 @@ class GPT2Manager:
 
         # 🔥 New tokens
         if tokenizer is not None:
-
-            tokenizer.add_special_tokens({
-                "additional_special_tokens": ["<|user|>", "<|assistant|>"]
-            })
 
             new_vocab_size = len(tokenizer)
 
@@ -124,14 +111,16 @@ class GPT2Manager:
             abort()
         return self.model
 
-    def get_model(self, tokenizer=None):
+    def get_model(self, tokenizer=None, inference = None):
         """
         Returns the model; prepare it if not yet loaded.
         """
 
-        if self.model is None:
+        if self.model is None and inference is None:
             return self.prepare_model(tokenizer)
-        return self.model
+        else:
+            return self.prepare_model(tokenizer, inference)
+
 
 
 

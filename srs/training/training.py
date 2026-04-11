@@ -1,171 +1,162 @@
 # training.py
-from dataset.dataset_pipeline import dataloader, tokenizer, df_all
-from srs.training.help_func import predict
 
-
-import dataset.dataset_pipeline as ds_pipeline
-import importlib
-importlib.reload(ds_pipeline)
-
-from torch.nn import CrossEntropyLoss
-from model.GPT_full_model import GPT2Manager
-import torch
-from tqdm import tqdm
 import os
-os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.5'
+import torch
+from torch.optim import AdamW
+from torch.nn import CrossEntropyLoss
+from tqdm import tqdm
+from transformers import GPT2Tokenizer
 
-if torch.cuda.is_available():
-   device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-   device = torch.device("mps")
-else:
-   device = torch.device("cpu")
+from srs.LLM_classification.config import Config
+import dataset.Dataset_dataloader as DL
+import dataset.get_prep_data as ds_prep
 
+from model.GPT_full_model import GPT2Manager
+from srs.training.help_func import move_to_device
+from srs.inference.help import temp_predict
 
-LEARNING_RATE = 5e-5
-WARMUP_STEPS = 100
-GRADIENT_CLIP = 1.0
-IGNORE_INDEX = -100
-batch_size = 2
-max_length = 512
-stride = 256
-shuffle = False
-
-data_preproc = df_all["text"].tolist()
-
-data_preproc =         ["""<|user|> Give three tips for staying healthy.
-<|assistant|> 1. Eat a balanced and nutritious diet...
-2. Engage in regular physical activity...
-3. Get enough sleep...<|user|> What about mental health?
-<|assistant|> Mental health is equally important! Practice mindfulness, maintain social connections, and seek help when needed.<|endoftext|>"""
-    ]
-dataloader = dataloader(data_preproc, tokenizer, batch_size, max_length, stride, shuffle)
-
-batch = next(iter(dataloader))
-
-input_ids = batch["input_ids"][0]
-labels = batch["labels"][0]
-
-decoded_input = tokenizer.decode(input_ids.tolist())
-
-print("=== INPUT TEXT ===")
-print(decoded_input)
-
-print("\n=== TOKENS ===")
-print(input_ids.tolist())
-
-print("\n=== LABELS ===")
-print(labels.tolist())
-
-print("\n=== TOKEN | LABEL ===")
-for token_id, label_id in zip(input_ids.tolist(), labels.tolist()):
-    token = tokenizer.decode([token_id])
-    label = tokenizer.decode([label_id]) if label_id != IGNORE_INDEX else "IGN"
-
-    print(f"{repr(token):>10} -> {label}")
+# =========================
+# Setup
+# =========================
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
+def get_tokenizer():
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    tokenizer.eos_token = Config.EOS_TOKEN
+    tokenizer.add_special_tokens({
+        "additional_special_tokens": [Config.USER_TOKEN, Config.ASSIST_TOKEN]
+    })
+    return tokenizer
 
+def get_dataloader(tokenizer, num_examples = None, shuffle=False):
+    df_all = ds_prep.get_data_preprocessed(Config)
+    if num_examples is not None:
+        df_all = df_all[:num_examples]
+    return DL.create_correct_dataloader(
+        tokenizer=tokenizer,
+        texts=df_all["text"].tolist(),
+        batch_size=4,
+        max_length=512,
+        stride=256,
+        shuffle=shuffle
+    )
 
+def get_model(tokenizer, lora = True, r = 8, alpha = 8):
+    manager = GPT2Manager(use_lora=lora, r=r, alpha=alpha)
+    model = manager.get_model(tokenizer=tokenizer)
+    return model
 
+def load_checkpoint(model, optimizer, path, device):
+    start_epoch, start_step = 0, 0
 
+    if os.path.exists(path):
+        print(f"Loading checkpoint from {path}")
 
+        checkpoint = torch.load(path, map_location=device)
 
+        model.load_state_dict(checkpoint["model_state"])
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
 
+        start_epoch = checkpoint.get("epoch", 0)
+        start_step = checkpoint.get("step", 0)
 
+        print(f"Resuming from epoch {start_epoch}, step {start_step}")
 
-test_prompt = ["""<|user|>Give three tips for staying healthy<|assistant|>"""]
+    # move optimizer tensors to device
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            state[k] = move_to_device(v, device)
 
-manager = GPT2Manager()
-model = manager.get_model(tokenizer=tokenizer)
-model = model.to(device)
+    return start_epoch, start_step
 
-loss_fn = CrossEntropyLoss(ignore_index=IGNORE_INDEX)
+def save_checkpoint(model, optimizer, epoch, step, path, device):
+    torch.save({
+        "model_state": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "epoch": epoch,
+        "step": step,
+        "device": device
+    }, path)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
+# =========================
+# Training Loop
+# =========================
+def train():
+    device = get_device()
+    tokenizer = get_tokenizer()
+    dataloader = get_dataloader(tokenizer)
 
-batch = next(iter(dataloader))
-input_ids = batch["input_ids"].to(device)
-labels = batch["labels"].to(device)
+    model = get_model(tokenizer, lora=True, r=8, alpha=8).to(device)
 
-logits = model(in_idx=input_ids)
-pred_ids = torch.argmax(logits, dim=-1)
+    optimizer = AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=1e-3
+    )
 
-print(tokenizer.decode(input_ids))
+    criterion = CrossEntropyLoss(ignore_index=Config.IGNORE_INDEX)
 
+    CHECKPOINT_PATH = Config.MODEL_WEIGHTS_PATH / "checkpoint_LoRA.pt"
 
+    start_epoch, start_step = load_checkpoint(
+        model, optimizer, CHECKPOINT_PATH, device
+    )
 
+    EPOCHS = 100
+    SAVE_EVERY = 1000
 
+    prompt = "Who is Julius Caesar? And who did he died?"
 
+    for epoch in range(start_epoch, EPOCHS):
+        model.train()
+        print(f"\n=== Epoch {epoch+1} ===")
 
+        total_loss = 0
+        total_tokens = 0
+        for step, batch in enumerate(tqdm(dataloader)):
 
+            if epoch == start_epoch and step <= start_step:
+                continue
+            optimizer.zero_grad()
+            input_ids = batch["input_ids"].to(device)
+            labels = batch["labels"].to(device)
 
+            logits = model(input_ids)
 
+            loss = criterion(
+                logits.view(-1, logits.size(-1)),
+                labels.view(-1)
+            )
 
-EPOCHS = 101
-loss_history = []
-step_history = []
-global_step = 0
-model.train()
-for epoch in range(EPOCHS):
-    torch.mps.empty_cache()
-    print(f"\n{'=' * 60}")
-    print(f"Epoch {epoch + 1}/{EPOCHS}")
-    print(f"{'=' * 60}")
+            num_tokens = (labels[0] != Config.IGNORE_INDEX).sum().item()
+            total_loss += loss.item() * num_tokens
+            total_tokens += num_tokens
 
-    epoch_loss = 0
-    progress_bar = tqdm(dataloader, desc=f"Epoch {epoch + 1}", unit="batch")
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-    for batch_idx, batch in enumerate(progress_bar):
-        input_ids = batch["input_ids"].to(device)
-        labels = batch["labels"].to(device)
+            optimizer.step()
 
-        # Forward pass
-        logits = model(in_idx=input_ids)  # [batch_size, seq_len, vocab_size]
+            avg_loss = total_loss / total_tokens
 
-        loss = loss_fn(
-            logits.view(-1, logits.size(-1)),  # [batch_size * seq_len, vocab_size]
-            labels.view(-1)  # [batch_size * seq_len]
-        )
-        # Backward pass
-        optimizer.zero_grad()
-        loss.backward()
+            if step % SAVE_EVERY == 0 and step > 0:
+                save_checkpoint(model, optimizer, epoch, step, CHECKPOINT_PATH, device)
+                print(f"Checkpoint saved at current epoch: {epoch + 1}, step: {step}, loss {avg_loss:.4f}")
 
-        # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRADIENT_CLIP)
+        print(temp_predict(model, prompt, tokenizer, device, max_new_tokens=100, temperature=0.8))
 
-        if epoch % 100 == 0:
-            model.eval()
-            with torch.no_grad():
-                pred_text = predict(model, test_prompt, tokenizer)
-                print(pred_text[0])
+        avg_loss = total_loss / len(dataloader)
+        save_checkpoint(model, optimizer, epoch + 1, 0, CHECKPOINT_PATH, device)
 
-        optimizer.step()
+        print(f"Epoch {epoch + 1} avg loss: {avg_loss:.4f}")
 
-        current_loss = loss.item()
-        epoch_loss += current_loss
-        global_step += 1
-
-        loss_history.append(current_loss)
-        step_history.append(global_step)
-
-        avg_loss = epoch_loss / (batch_idx + 1)
-
-        progress_bar.set_postfix({
-            'loss': f'{current_loss:.4f}',
-            'avg_loss': f'{avg_loss:.4f}',
-        })
-        break
-
-    # Статистика эпохи
-    avg_epoch_loss = epoch_loss / len(dataloader)
-    print(f"\n✅ Epoch {epoch + 1} completed!")
-    print(f"   Average loss: {avg_epoch_loss:.4f}")
-
-
-
-
-
-
-
-
+# =========================
+# Entry Point
+# =========================
+if __name__ == "__main__":
+    train()
