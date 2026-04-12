@@ -110,7 +110,7 @@ def train():
     EPOCHS = 100
     SAVE_EVERY = 1000
 
-    prompt = "Who is Julius Caesar? And who did he died?"
+    prompt = "Who is Julius Caesar? And how did he died?"
 
     for epoch in range(start_epoch, EPOCHS):
         model.train()

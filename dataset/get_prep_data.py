@@ -237,6 +237,10 @@ def get_data_preprocessed(config) -> pd.DataFrame:
 
         df_all = pd.concat([alp_df, oasst_df], ignore_index=True)
 
+        # shuffle
+        df_all = df_all.sample(frac=1, random_state=42).reset_index(drop=True)
+
+        # save
         df_all.to_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"), index=False)
 
     return df_all
