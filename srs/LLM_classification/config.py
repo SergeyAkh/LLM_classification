@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 
 if hasattr(sys, 'ps1') or 'ipykernel' in sys.modules:
-    PROJECT_ROOT = Path.cwd().parent
+    PROJECT_ROOT = Path.cwd() / "srs"
 elif '__file__' in globals():
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
 else:

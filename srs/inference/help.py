@@ -33,6 +33,7 @@ def build_prompt(history):
     for role, text in history:
         prompt += f"<|{role}|> {text}\n"
     prompt += "<|assistant|>"
+    print(f"Prompt: {prompt}")
     return prompt
 
 def temp_predict(model, prompt, tokenizer, device, temperature=1.0, max_new_tokens=50):
@@ -57,7 +58,8 @@ def temp_predict(model, prompt, tokenizer, device, temperature=1.0, max_new_toke
     # new_tokens = input_ids[0][original_length:]
     # response = tokenizer.decode(new_tokens)
     decoded = tokenizer.decode(input_ids[0])
-    return decoded.split("<|assistant|>")[-1].strip()
+    decoded = decoded.split("<|assistant|>")[-1].strip()
+    return decoded.split("<|endoftext|>")[0]
 
 
 def greedy_predict(model, prompt, tokenizer,device):

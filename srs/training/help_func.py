@@ -16,16 +16,20 @@ import os
 #         if isinstance(module, LoRALinear):
 #             print(name, module.A.abs().mean().item(), module.B.abs().mean().item())
 
-# from model.LoRA import LoRALinear
-# with torch.no_grad():
-#     for name, module in model.named_modules():
-#         if isinstance(module, LoRALinear):
-#             print(name, module.A.abs().mean().item(), module.B.abs().mean().item())
+# Check if LoRA is enabled and scaling is reasonable
+# for name, module in model.named_modules():
+#     if hasattr(module, 'enabled'):
+#         print(f"{name}: enabled={module.enabled}, r={module.r}, alpha={module.alpha}, scaling={module.scaling}")
+#
+# for name, p in model.named_parameters():
+#     if p.requires_grad:
+#         print(name, p.grad.abs().mean() if p.grad is not None else None)
 #
 # for name, module in model.named_modules():
-#     if isinstance(module, LoRALinear):
-#         if torch.isnan(module.A).any() or torch.isnan(module.B).any():
-#             print("NaN detected in", name)
+#     if hasattr(module, "A"):
+#         print(name, module.A.abs().mean().item(), module.B.abs().mean().item())
+#
+# print(type(model.trf_blocks[0].att.W_query))
 #
 # batch = next(iter(dataloader_func))
 # input_ids = batch["input_ids"].to(device)
@@ -148,12 +152,14 @@ def leyers_with_grad(model):
     for name, p in model.named_parameters():
         print(f"{name} -> {p.requires_grad}")
 
+    print(sum(p.numel() for name, p in model.named_parameters() if p.requires_grad))
+
 
 def inspect_one_example(dataloader, tokenizer, IGNORE_INDEX):
     batch = next(iter(dataloader))
 
-    input_ids = batch["input_ids"][2]
-    labels = batch["labels"][2]
+    input_ids = batch["input_ids"][0]
+    labels = batch["labels"][0]
 
     decoded_input = tokenizer.decode(input_ids.tolist())
 

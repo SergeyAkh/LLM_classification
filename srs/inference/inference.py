@@ -16,7 +16,7 @@ ASSISTANT_TOKEN = Config.ASSIST_TOKEN
 USER_TOKEN = Config.USER_TOKEN
 
 # ---- Load model ----
-model = get_model(tokenizer, lora=True, r=8, alpha=8).to(device)
+model = get_model(tokenizer, lora=False, r=16, alpha=16).to(device)
 CHECKPOINT_PATH = Config.MODEL_WEIGHTS_PATH / "checkpoint_LoRA.pt"
 checkpoint = torch.load(CHECKPOINT_PATH, map_location=device)
 model.load_state_dict(checkpoint["model_state"])
@@ -44,6 +44,8 @@ def generate(model, input_ids):
     return input_ids
 
 
+
+
 def build_prompt(history):
     prompt = ""
     for role, text in history:
@@ -53,6 +55,7 @@ def build_prompt(history):
             prompt += f"{ASSISTANT_TOKEN} {text}\n"
 
     prompt += f"{ASSISTANT_TOKEN} "
+
     return prompt
 
 
@@ -71,15 +74,15 @@ def main():
 
         prompt = build_prompt(history)
 
-        input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
+        # input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
 
-        output_ids = generate(model, input_ids)
-
-        decoded = tokenizer.decode(output_ids[0])
-
+        # output_ids = generate(model, input_ids)
+        # decoded = tokenizer.decode(output_ids[0])
         # extract only last assistant answer
-        answer = decoded.split(ASSISTANT_TOKEN)[-1].strip()
+        # answer = decoded.split(ASSISTANT_TOKEN)[-1].strip()
 
+
+        answer = temp_predict(model, prompt, tokenizer, device, temperature=TEMPERATURE)
         print(f"Bot: {answer}\n")
 
         history.append(("assistant", answer))

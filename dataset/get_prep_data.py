@@ -69,165 +69,79 @@ def oasst1_df(config) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     return df_tr, df_val
 
-def is_nan(x):
-    return x is None or (isinstance(x, float) and math.isnan(x))
+def preprop_oasst(preprop_oasst):
+    id_to_row = preprop_oasst.set_index("message_id").to_dict("index")
+    children = preprop_oasst.groupby("parent_id")["message_id"].apply(list).to_dict()
 
+    all_ids = set(preprop_oasst["message_id"])
+    parent_ids = set(preprop_oasst["parent_id"].dropna())
 
-def build_tree(tree_df):
-    nodes = {}
-    children = defaultdict(list)
+    leaf_ids = list(all_ids - parent_ids)
 
-    for _, row in tree_df.iterrows():
-        node = {
-            "id": row["message_id"],
-            "parent_id": row["parent_id"],
-            "text": row["text"],
-            "role": row["role"]
-        }
-        nodes[node["id"]] = node
-        children[node["parent_id"]].append(node["id"])
+    def build_thread(leaf_id):
+        thread = []
+        current = leaf_id
 
-    # attach children
-    for parent_id, child_ids in children.items():
-        if parent_id in nodes:
-            nodes[parent_id]["children"] = child_ids
+        while not pd.isna(current):
+            if current not in id_to_row:
+                break  # broken link in data
 
-    return nodes
+            row = id_to_row[current]
+            thread.append(row)
+            current = row["parent_id"]
 
-# =========================
-# 3. Get leaf nodes
-# =========================
-def get_leaf_nodes(nodes):
-    return [
-        node_id for node_id, node in nodes.items()
-        if "children" not in node or len(node["children"]) == 0
-    ]
+        thread.reverse()
+        return thread
 
-# =========================
-# 4. Build full path (root → leaf)
-# =========================
-def build_path(nodes, node_id):
-    path = []
+    threads = [build_thread(leaf_id) for leaf_id in leaf_ids]
 
-    while node_id in nodes:
-        node = nodes[node_id]
-        path.append((node["role"], node["text"]))
-        node_id = node["parent_id"]
+    def is_valid_thread(thread):
+        if len(thread) < 2:
+            return False
 
-    return list(reversed(path))
+        # must end with assistant
+        if thread[-1].get("role") != "assistant":
+            return False
 
-# =========================
-# 5. Format for GPT training
-# =========================
-def format_conversation(path):
-    text = ""
+        return True
 
-    for role, content in path:
-        if not content.strip():
-            continue
+    threads = [t for t in threads if is_valid_thread(t)]
+    threads = [t for t in threads if all(m["text"] for m in t)]
+    def threads_to_text_df(threads):
+        data = []
 
-        prefix = "<|user|>" if role == "prompter" else "<|assistant|>"
-        text += f"{prefix} {content}\n"
+        for i, thread in enumerate(threads):
+            lines = []
 
-    return text.strip() + " <|endoftext|>"
+            for msg in thread:
+                role = msg.get("role", "user")  # fallback if missing
 
-# =========================
-# 6. Filter bad data (optional but recommended)
-# =========================
-def is_valid_path(path):
-    if len(path) < 2:
-        return False
-    return all(len(text.strip()) > 3 for _, text in path)
+                if role == "prompter":
+                    lines.append(f"<|user|> {msg['text']}")
+                elif role == "assistant":
+                    lines.append(f"<|assistant|> {msg['text']}")
+                else:
+                    lines.append(msg["text"])
 
+            if len(lines) >= 2:
+                data.append({
+                    "id": i,
+                    "text": "\n".join(lines)
+                })
 
+        return pd.DataFrame(data)
 
-def preprop_oasst(df):
+    treads = threads_to_text_df(threads)
+    return treads
 
-    prompters = df[df["role"] == "prompter"]
-    assistants_na = df[(df["role"] == "assistant")&(df["rank"].isna())]
-    assistants_notna = df[(df["role"] == "assistant")&(~df["rank"].isna())]
-    # -----------------------------
-    # 2. Keep best assistant per parent
-    # -----------------------------
-
-    test = assistants_notna.groupby("parent_id", group_keys=True).apply(lambda x: x.loc[[x["rank"].idxmax(),x["rank"].idxmin()]]).reset_index()
-    test = test.sort_values(['parent_id', 'rank'])
-
-    result = (
-        test.sort_values(['parent_id', 'rank'])  # keep correct order
-            .groupby(['parent_id', 'role', 'message_tree_id'], as_index=False)
-            .agg({
-                'text': ' '.join,
-                'message_id': 'first'
-            })
-    )
-
-    assistants_na = (
-        assistants_na
-        .groupby(['parent_id', 'role', 'message_tree_id'], as_index=False)
-        .agg({
-            'text': ' '.join,
-            'message_id': 'first'
-        })
-    )
-
-    assistant = pd.concat([assistants_na, result], ignore_index=True)
-
-    # -----------------------------
-    # 3. Keep only prompts that have answers
-    # -----------------------------
-    valid_parent_ids = set(assistant["parent_id"])
-
-    prompters = prompters[prompters["message_id"].isin(valid_parent_ids)]
-    prompters = (
-        prompters.groupby(["message_id","role","message_tree_id"])['text']
-        .apply(lambda x: ' '.join(x))  # or use special separator
-        .reset_index()
-    )
-    # -----------------------------
-    # 4. Combine back
-    # -----------------------------
-    df_filtered = pd.concat([prompters, assistant], ignore_index=True)
-
-    # -----------------------------
-    # 5. Optional: remove broken chains
-    # (keep only nodes whose parent exists OR root)
-    # -----------------------------
-    valid_ids = set(df_filtered["message_id"])
-
-    df_filtered = df_filtered[
-        df_filtered["parent_id"].isin(valid_ids) |
-        ~df_filtered["parent_id"].isin(df_filtered["message_id"])
-    ]
-
-    df_filtered = df_filtered.reset_index(drop=True)
-
-    # =========================
-    # 7. Main pipeline
-    # =========================
-    all_sequences = []
-
-    for tree_id, tree_df in df_filtered.groupby("message_tree_id"):
-        nodes = build_tree(tree_df)
-        leaf_nodes = get_leaf_nodes(nodes)
-
-        for leaf in leaf_nodes:
-            path = build_path(nodes, leaf)
-
-            if is_valid_path(path):
-                formatted = format_conversation(path)
-                all_sequences.append(formatted)
-
-    oasst_flat = pd.DataFrame({'text': all_sequences})
-    return oasst_flat
-
-def get_data_preprocessed(config) -> pd.DataFrame:
+def get_data_preprocessed(config, split_ratio = 0.9):
     if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")):
-        df_all = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"))
+        train = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"))
+        val = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv"))
     else:
         os.makedirs(config.PREPROC_DS, exist_ok=True)
 
-        alp_df = alpaca_df(config)
+        # alp_df = alpaca_df(config)
 
         df_tr, df_val = oasst1_df(config)
 
@@ -235,12 +149,17 @@ def get_data_preprocessed(config) -> pd.DataFrame:
 
         oasst_df = preprop_oasst(oasst_all)
 
-        df_all = pd.concat([alp_df, oasst_df], ignore_index=True)
+        df_all = pd.concat([oasst_df], ignore_index=True)
 
         # shuffle
         df_all = df_all.sample(frac=1, random_state=42).reset_index(drop=True)
 
-        # save
-        df_all.to_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"), index=False)
+        split_idx = int(len(df_all) * split_ratio)
 
-    return df_all
+        train = df_all[:split_idx]
+        val = df_all[split_idx:]
+        # save
+        train.to_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"), index=False)
+        val.to_csv(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv"), index=False)
+
+    return train, val

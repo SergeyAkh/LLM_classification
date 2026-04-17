@@ -1,9 +1,7 @@
-# GPT_full_model.py
-
 from os import abort
 from srs.LLM_classification.config import Config
 from model.Load_model import GPT2Loader
-from model.GPT_manual_architecture import GPTModel, MultiHeadAttention
+from model.GPT_manual_architecture import GPTModel, MultiHeadAttention, FeedForward
 from model.LoRA import LoRALinear
 import torch.nn as nn
 
@@ -18,10 +16,11 @@ class GPT2Manager:
     - Builds PyTorch GPT model
     """
 
-    def __init__(self, use_lora=True, r=8, alpha = 1):
+    def __init__(self, use_lora=True, r=8, alpha = 1, dropout=0.05):
         # Load configuration
         self.r = r
         self.alpha = alpha
+        self.dropout = dropout
         self.use_lora = use_lora
         self.path = Config.GPT_WEIGHTS_PATH
         self.model_type = Config.MODEL_TYPE
@@ -65,7 +64,7 @@ class GPT2Manager:
 
     def freeze_except_lora(self, model):
         for name, param in model.named_parameters():
-            if "A" in name or "B" in name or "norm" in name:
+            if "A" in name or "B" in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
@@ -75,14 +74,29 @@ class GPT2Manager:
         for module in model.modules():
             if isinstance(module, MultiHeadAttention):
                 module.W_query = LoRALinear(
-                    module.W_query, r=self.r, alpha=self.alpha
+                    module.W_query, r=self.r, alpha=self.alpha, dropout=self.dropout
                 )
                 module.W_query.enabled = enabled
 
                 module.W_value = LoRALinear(
-                    module.W_value, r=self.r, alpha=self.alpha
+                    module.W_value, r=self.r, alpha=self.alpha, dropout=self.dropout
                 )
                 module.W_value.enabled = enabled
+
+                module.W_key = LoRALinear(
+                    module.W_key, r=self.r, alpha=self.alpha, dropout=self.dropout
+                )
+                module.W_key.enabled = enabled
+
+                module.out_proj = LoRALinear(
+                    module.out_proj, r=self.r, alpha=self.alpha, dropout=self.dropout
+                )
+                module.out_proj.enabled = enabled
+            elif isinstance(module, FeedForward):
+                for i, layer in enumerate(module.layers):
+                    if isinstance(layer, nn.Linear):
+                        module.layers[i] = LoRALinear(layer, r=self.r, alpha=self.alpha, dropout=self.dropout)
+                        module.layers[i].enabled = enabled
 
     def prepare_model(self, tokenizer, inference = None):
         self.loader = GPT2Loader(model_size=self.model_size, models_dir=self.path)
@@ -120,8 +134,3 @@ class GPT2Manager:
             return self.prepare_model(tokenizer)
         else:
             return self.prepare_model(tokenizer, inference)
-
-
-
-
-
