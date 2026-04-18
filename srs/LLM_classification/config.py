@@ -30,6 +30,11 @@ class Config:
     USER_TOKEN = "<|user|>"
     ASSIST_TOKEN = "<|assistant|>"
 
+    # LoRA params
+    lora = True
+    r = 8
+    alpha = 8
+    dropout = 0.05
 
     # model params
     GPT_WEIGHTS_PATH = PROJECT_ROOT / "gpt_trained_weights"

@@ -23,8 +23,8 @@ def get_tokenizer():
     })
     return tokenizer
 
-def get_model(tokenizer, lora = True, r = 8, alpha = 8):
-    manager = GPT2Manager(use_lora=lora, r=r, alpha=alpha)
+def get_model(tokenizer, lora = True, r = 8, alpha = 8, dropout = 0.5):
+    manager = GPT2Manager(use_lora=lora, r=r, alpha=alpha, dropout=dropout)
     model = manager.get_model(tokenizer=tokenizer, inference=True)
     return model
 

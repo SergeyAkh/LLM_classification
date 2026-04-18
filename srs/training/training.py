@@ -136,7 +136,7 @@ def run_epoch(
             labels = batch["labels"].to(device)
 
             if is_train:
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
 
             logits = model(input_ids)
 
@@ -161,7 +161,7 @@ def run_epoch(
                     save_checkpoint(model=model, optimizer=optimizer, scheduler=scheduler,
                                     epoch=epoch, step=step, path=CHECKPOINT_PATH, device=device)
                     print(f"Checkpoint saved at current epoch: {epoch}, step: {step}, loss {avg_loss:.4f},"
-                          f"Learning rate: {scheduler.get_lr()[0]}"
+                          f"Learning rate: {scheduler.get_last_lr()[0]}"
                           )
                 if scheduler is not None:
                     scheduler.step()
@@ -187,7 +187,10 @@ def train():
     tokenizer = get_tokenizer()
     dataloader_tr = get_dataloader(tokenizer, training)
     dataloader_val = get_dataloader(tokenizer, val)
-    model = get_model(tokenizer, lora=True, r=8, alpha=8, dropout=0.05).to(device)
+    model = get_model(tokenizer, lora=Config.lora,
+                      r=Config.r,
+                      alpha=Config.alpha,
+                      dropout=Config.dropout).to(device)
 
     optimizer = AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -235,7 +238,7 @@ def train():
             ignore_index=Config.IGNORE_INDEX
         )
 
-        print(f"Loss on validation: {val_loss:.4f}, perplexity: {math.exp(val_loss)}")
+        print(f"Loss on validation: {val_loss:.4f}, perplexity: {math.exp(val_loss)}, perplexity: {math.exp(val_loss)}")
         print(temp_predict(model, prompt, tokenizer, device, max_new_tokens=100, temperature=0.8))
 
         save_checkpoint(model = model, optimizer = optimizer,
@@ -243,7 +246,7 @@ def train():
                         step=0, path = CHECKPOINT_PATH, device=device)
 
         print(f"Model saved after whole epoch: {epoch}, loss: {train_loss:.4f}, perplexity: {math.exp(train_loss)},"
-              f"Learning rate: {scheduler.get_lr()[0]}"
+              f"Learning rate: {scheduler.get_last_lr()[0]}"
               )
 
 

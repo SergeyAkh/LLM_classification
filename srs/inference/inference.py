@@ -16,7 +16,10 @@ ASSISTANT_TOKEN = Config.ASSIST_TOKEN
 USER_TOKEN = Config.USER_TOKEN
 
 # ---- Load model ----
-model = get_model(tokenizer, lora=False, r=16, alpha=16).to(device)
+model = get_model(tokenizer, lora=Config.lora,
+                      r=Config.r,
+                      alpha=Config.alpha,
+                      dropout=Config.dropout).to(device)
 CHECKPOINT_PATH = Config.MODEL_WEIGHTS_PATH / "checkpoint_LoRA.pt"
 checkpoint = torch.load(CHECKPOINT_PATH, map_location=device)
 model.load_state_dict(checkpoint["model_state"])
