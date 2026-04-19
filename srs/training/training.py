@@ -20,7 +20,7 @@ from srs.training.help_func import move_to_device, inspect_one_example, leyers_w
 from srs.inference.help import temp_predict
 import importlib
 import srs.LLM_classification.config as GPT
-importlib.reload(GPT)
+importlib.reload(ds_prep)
 
 # =========================
 # Setup
@@ -180,14 +180,15 @@ def train():
     SAVE_EVERY = 1000
 
     training, val = ds_prep.get_data_preprocessed(Config, split_ratio=0.9)
-    # val = training[104:105]
-    # training = training[104:105]
-    # print(training["text"].iloc[0])
+    training["text"] = training["text"] + "<|endoftext|>"
+    val["text"] = val["text"] + "<|endoftext|>"
+
     device = get_device()
     tokenizer = get_tokenizer()
     dataloader_tr = get_dataloader(tokenizer, training)
     dataloader_val = get_dataloader(tokenizer, val)
-    model = get_model(tokenizer, lora=Config.lora,
+
+    model = get_model(tokenizer, lora=True,
                       r=Config.r,
                       alpha=Config.alpha,
                       dropout=Config.dropout).to(device)
@@ -208,7 +209,7 @@ def train():
         scheduler=scheduler, path = CHECKPOINT_PATH, device = device
     )
 
-    prompt = """What is the best way to defeat a demon?"""
+    prompt = "Hi Assistant, how are you?"
 
     for epoch in range(start_epoch, EPOCHS):
         print(f"\n=== Epoch {epoch+1} ===")

@@ -132,6 +132,8 @@ def preprop_oasst(preprop_oasst):
         return pd.DataFrame(data)
 
     treads = threads_to_text_df(threads)
+    treads["text_new"] = treads["text"] + "<|endoftext|>"
+    treads["text"] = treads["text_new"]
     return treads
 
 def get_data_preprocessed(config, split_ratio = 0.9):
