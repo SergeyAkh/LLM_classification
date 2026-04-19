@@ -20,7 +20,7 @@ from srs.training.help_func import move_to_device, inspect_one_example, leyers_w
 from srs.inference.help import temp_predict
 import importlib
 import srs.LLM_classification.config as GPT
-importlib.reload(GPT)
+importlib.reload(ds_prep)
 
 # =========================
 # Setup
