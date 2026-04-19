@@ -180,8 +180,6 @@ def train():
     SAVE_EVERY = 1000
 
     training, val = ds_prep.get_data_preprocessed(Config, split_ratio=0.9)
-    training["text"] = training["text"] + "<|endoftext|>"
-    val["text"] = val["text"] + "<|endoftext|>"
 
     device = get_device()
     tokenizer = get_tokenizer()
