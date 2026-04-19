@@ -137,7 +137,7 @@ def preprop_oasst(preprop_oasst):
     return treads
 
 def get_data_preprocessed(config, split_ratio = 0.9):
-    if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")):
+    if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")) and os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv")):
         train = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"))
         val = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv"))
     else:
