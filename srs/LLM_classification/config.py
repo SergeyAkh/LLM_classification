@@ -23,6 +23,7 @@ class Config:
 
     PROJECT_ROOT = PROJECT_ROOT
     PREPROC_DS = PROJECT_ROOT / "dataset" / "data" / "preprocessed"
+    TOKENIZER_PATH = PROJECT_ROOT / "tokenizer"
     DATA_RAW_PATH = PROJECT_ROOT / "dataset" / "data" / "raw"
     MODEL_PATH = PROJECT_ROOT / "weights" / "model.pt"
     # tokenizer params
@@ -34,7 +35,7 @@ class Config:
     lora = True
     r = 8
     alpha = 8
-    dropout = 0.05
+    dropout = 0
 
     # model params
     GPT_WEIGHTS_PATH = PROJECT_ROOT / "gpt_trained_weights"

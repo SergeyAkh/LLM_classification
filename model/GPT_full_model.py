@@ -6,7 +6,7 @@ from model.LoRA import LoRALinear
 import torch.nn as nn
 
 # import importlib
-# import model.LoRA as hf
+# import model.GPT_manual_architecture as hf
 # importlib.reload(hf)
 class GPT2Manager:
     """
@@ -92,6 +92,7 @@ class GPT2Manager:
                     module.out_proj, r=self.r, alpha=self.alpha, dropout=self.dropout
                 )
                 module.out_proj.enabled = enabled
+
             elif isinstance(module, FeedForward):
                 for i, layer in enumerate(module.layers):
                     if isinstance(layer, nn.Linear):
@@ -104,6 +105,7 @@ class GPT2Manager:
         self.settings, self.params = self.loader.download_and_load()
 
         self.model = GPTModel(self.base_config)
+
         if inference is None:
 
             self.loader.load_weights_into_gpt(self.model)

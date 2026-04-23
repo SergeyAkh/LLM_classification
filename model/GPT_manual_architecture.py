@@ -60,7 +60,7 @@ class MultiHeadAttention(nn.Module):
                        diagonal=1)
         )
 
-    def forward(self, x):
+    def forward(self, x, attention_mask=None):
         b, num_tokens, d_in = x.shape
 
         keys = self.W_key(x)
@@ -80,6 +80,12 @@ class MultiHeadAttention(nn.Module):
         mask_bool = self.mask[:num_tokens, :num_tokens].to(x.device).bool()
 
         attn_scores.masked_fill_(mask_bool, -torch.inf)
+
+        if attention_mask is not None:
+            # attention_mask: (b, seq_len)
+            mask = attention_mask.unsqueeze(1).unsqueeze(2)
+            # shape → (b, 1, 1, seq_len)
+            attn_scores = attn_scores.masked_fill(mask == 0, -torch.inf)
 
         attn_weights = torch.softmax(attn_scores / keys.shape[-1] ** 0.5, dim=-1)
         attn_weights = self.dropout(attn_weights)
@@ -106,10 +112,11 @@ class TransformerBlock(nn.Module):
         self.norm2 = LayerNorm(cfg["emb_dim"])
         self.drop_shortcut = nn.Dropout(cfg["drop_rate"])
 
-    def forward(self, x):
+    def forward(self, x, attention_mask=None):
         shortcut = x
         x = self.norm1(x)
-        x = self.att(x)
+        x = self.att(x, attention_mask)
+        # x = self.att(x)
         x = self.drop_shortcut(x)
         x = x + shortcut
 
@@ -125,7 +132,7 @@ class TransformerBlock(nn.Module):
 class GPTModel(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.model = None
+        # self.model = None
         self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
         self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
         self.drop_emb = nn.Dropout(cfg["drop_rate"])
@@ -138,13 +145,19 @@ class GPTModel(nn.Module):
             cfg["emb_dim"], cfg["vocab_size"], bias=False
         )
 
-    def forward(self, in_idx):
+    def forward(self, in_idx, attention_mask = None):
         batch_size, seq_len = in_idx.shape
         tok_embeds = self.tok_emb(in_idx)
-        pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
+        # pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
+        pos = torch.arange(seq_len, device=in_idx.device).unsqueeze(0)
+        pos_embeds = self.pos_emb(pos)  # (1, seq, d)
         x = tok_embeds + pos_embeds
         x = self.drop_emb(x)
-        x = self.trf_blocks(x)
+
+        for block in self.trf_blocks:
+            x = block(x, attention_mask)
+
+        # x = self.trf_blocks(x)
         x = self.final_norm(x)
         logits = self.out_head(x)
 

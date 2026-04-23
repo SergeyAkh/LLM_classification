@@ -2,8 +2,8 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import List
-
-IGNORE_INDEX = -100
+from srs.LLM_classification.config import Config
+IGNORE_INDEX = Config.IGNORE_INDEX
 
 class CorrectChatDataset(Dataset):
 
@@ -11,9 +11,9 @@ class CorrectChatDataset(Dataset):
         self.input_ids = []
         self.labels = []
 
-        self.assistant_token_id = tokenizer.convert_tokens_to_ids("<|assistant|>")
-        self.user_token_id = tokenizer.convert_tokens_to_ids("<|user|>")
-        self.eos_token_id = tokenizer.convert_tokens_to_ids("<|endoftext|>")
+        self.assistant_token_id = tokenizer.convert_tokens_to_ids(Config.ASSIST_TOKEN)
+        self.user_token_id = tokenizer.convert_tokens_to_ids(Config.USER_TOKEN)
+        self.eos_token_id = tokenizer.convert_tokens_to_ids(Config.EOS_TOKEN)
 
         print(f"Processing {len(texts)} conversations...")
 
@@ -26,10 +26,10 @@ class CorrectChatDataset(Dataset):
         print(f"✅ Dataset created: {len(self.input_ids)} samples")
 
     def _process_conversation(self, text: str, tokenizer, max_length: int, stride: int):
-
+        text = text.strip()
         full_tokens = tokenizer.encode(
             text,
-            allowed_special={"<|user|>", "<|assistant|>", "<|endoftext|>"},
+            allowed_special={Config.USER_TOKEN, Config.ASSIST_TOKEN, Config.EOS_TOKEN},
             add_special_tokens=False
         )
 
@@ -163,6 +163,5 @@ def create_correct_dataloader(
     )
 
     return dataloader
-
 
 

@@ -1,8 +1,7 @@
 import os
-import math
 import pandas as pd
 from datasets import load_dataset
-from collections import defaultdict
+
 
 
 def alpaca_df(config) -> pd.DataFrame:
@@ -119,14 +118,14 @@ def preprop_oasst(preprop_oasst):
                 if role == "prompter":
                     lines.append(f"<|user|> {msg['text']}")
                 elif role == "assistant":
-                    lines.append(f"<|assistant|> {msg['text']}")
+                    lines.append(f"<|assistant|> {msg['text'] + "<|endoftext|>"}")
                 else:
                     lines.append(msg["text"])
 
             if len(lines) >= 2:
                 data.append({
                     "id": i,
-                    "text": "\n".join(lines) + "<|endoftext|>"
+                    "text": "\n".join(lines)
                 })
 
         return pd.DataFrame(data)
@@ -137,6 +136,7 @@ def preprop_oasst(preprop_oasst):
 
 def get_data_preprocessed(config, split_ratio = 0.9):
     if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")) and os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv")):
+
         train = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"))
         val = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv"))
     else:

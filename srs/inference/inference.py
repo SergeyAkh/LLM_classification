@@ -1,7 +1,7 @@
 # inference.py
 
 from srs.inference.help import *
-
+from srs.training.help_func import get_device,
 device = get_device()
 
 MAX_NEW_TOKENS = 100
