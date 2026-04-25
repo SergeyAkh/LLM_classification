@@ -33,7 +33,7 @@ def alpaca_df(config) -> pd.DataFrame:
     return df_new
 
 
-def oasst1_df(config) -> tuple[pd.DataFrame, pd.DataFrame]:
+def oasst1_df(config, language) -> tuple[pd.DataFrame, pd.DataFrame]:
     path_tr = os.path.join(config.DATA_RAW_PATH, 'oasst1_train.json')
     path_val = os.path.join(config.DATA_RAW_PATH, 'oasst1_val.json')
 
@@ -62,6 +62,10 @@ def oasst1_df(config) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     cols_tr = [c for c in cols if c in df_tr.columns]
     cols_val = [c for c in cols if c in df_val.columns]
+
+    if language is not None:
+        df_tr = df_tr[df_tr["lang"] == language]
+        df_tr = df_tr[df_tr["lang"] == language]
 
     df_tr = df_tr[cols_tr]
     df_val = df_val[cols_val]
@@ -134,7 +138,7 @@ def preprop_oasst(preprop_oasst):
 
     return treads
 
-def get_data_preprocessed(config, split_ratio = 0.9):
+def get_data_preprocessed(config, split_ratio = 0.9, language = None):
     if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")) and os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv")):
 
         train = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"))
@@ -144,7 +148,7 @@ def get_data_preprocessed(config, split_ratio = 0.9):
 
         # alp_df = alpaca_df(config)
 
-        df_tr, df_val = oasst1_df(config)
+        df_tr, df_val = oasst1_df(config, language=language)
 
         oasst_all = pd.concat([df_tr, df_val], ignore_index=True)
 

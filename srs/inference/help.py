@@ -36,7 +36,7 @@ def build_prompt(history):
     print(f"Prompt: {prompt}")
     return prompt
 
-def temp_predict(model, prompt, tokenizer, device, temperature=1.0, max_new_tokens=50):
+def temp_predict(model_name, model, prompt, tokenizer, device, temperature=1.0, max_new_tokens=50):
     model.eval()
 
     prompt = f"<|user|> {prompt} <|assistant|>"
@@ -44,8 +44,10 @@ def temp_predict(model, prompt, tokenizer, device, temperature=1.0, max_new_toke
 
     with torch.no_grad():
         for _ in range(max_new_tokens):
-            logits = model(input_ids)
-            logits = logits[:, -1, :] / temperature
+            outputs = model(input_ids)
+            if model_name == "gpt2":
+                outputs = outputs.logits
+            logits = outputs[:, -1, :] / temperature
 
             probs = F.softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)

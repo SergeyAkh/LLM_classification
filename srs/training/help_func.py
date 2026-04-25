@@ -4,7 +4,8 @@ from tqdm import tqdm
 import torch
 import os
 import numpy as np
-from transformers import GPT2Tokenizer, get_cosine_schedule_with_warmup
+from transformers import GPT2LMHeadModel, GPT2Tokenizer, get_cosine_schedule_with_warmup
+from peft import LoraConfig, get_peft_model, TaskType
 from srs.LLM_classification.config import Config
 from model.GPT_full_model import GPT2Manager
 import dataset.Dataset_dataloader as DL
@@ -17,8 +18,8 @@ def get_device():
         return torch.device("mps")
     return torch.device("cpu")
 
-def get_schedular(optimizer, dataloader, epoch):
-    num_training_steps = len(dataloader) * epoch
+def get_schedular(optimizer, dataloader, epoch, accum_steps):
+    num_training_steps = (len(dataloader) * epoch) // accum_steps
     num_warmup_steps = int(0.05 * num_training_steps)  # 5% warmup
 
     return get_cosine_schedule_with_warmup(
@@ -53,10 +54,30 @@ def get_dataloader(tokenizer, dataset, batch_size, shuffle=False):
     )
 
 
-def get_model(tokenizer, lora = True, r = 8, alpha = 8, dropout = 0.05):
-    manager = GPT2Manager(use_lora=lora, r=r, alpha=alpha, dropout=dropout)
+def get_model(model: str,
+        tokenizer, lora = True, r = 8, alpha = 8, dropout = 0.05):
+    if model == "gpt2":
 
-    return manager.get_model(tokenizer=tokenizer)
+        model = GPT2LMHeadModel.from_pretrained("gpt2")
+        model.resize_token_embeddings(len(tokenizer))
+        if lora:
+            lora_config = LoraConfig(
+                task_type=TaskType.CAUSAL_LM,
+                r=r,
+                lora_alpha=alpha,
+                lora_dropout=dropout,
+                target_modules=["c_attn", "c_proj"]  # GPT-2 specific
+            )
+            model = get_peft_model(model, lora_config)
+        print(f"Imported {model} with LoRA - {lora}")
+        return model
+    elif model == "custom_gpt2":
+        manager = GPT2Manager(use_lora=lora, r=r, alpha=alpha, dropout=dropout)
+        print(f"Imported {model} with LoRA - {lora}")
+        return manager.get_model(tokenizer=tokenizer)
+    return None
+
+
 # =========================
 # Checkpoint
 # =========================
@@ -72,7 +93,7 @@ def load_checkpoint(model, optimizer, scheduler, path, device):
         scheduler.load_state_dict(checkpoint["scheduler_state"])
         start_epoch = checkpoint.get("epoch", 0)
         start_step = checkpoint.get("step", 0)
-        loss_for_save = checkpoint.get("loss_for_save", np.inf)
+        loss_for_save = checkpoint.get("loss", np.inf)
 
         print(f"Resuming from epoch {start_epoch}, step {start_step}, loss {loss_for_save}")
 
@@ -96,7 +117,6 @@ def save_checkpoint(model, optimizer, scheduler, epoch, step, path, device, loss
     }, path)
 
 
-
 def move_to_device(obj, device):
     if isinstance(obj, torch.Tensor):
         return obj.to(device)
@@ -106,46 +126,6 @@ def move_to_device(obj, device):
         return [move_to_device(v, device) for v in obj]
     else:
         return obj
-
-def save_checkpoint(
-        model,
-        optimizer,
-        path: str ,
-        epoch: int,
-        step: int,
-        device: str = None
-) -> None:
-    """Save model and optimizer checkpoint."""
-    checkpoint = {
-        "model_state": model.state_dict(),
-        "optimizer_state": optimizer.state_dict(),
-        "epoch": epoch,
-        "step": step,
-        "device": device or str(next(model.parameters()).device)
-    }
-    torch.save(checkpoint, path)
-
-
-def load_checkpoint(
-        model,
-        optimizer,
-        path: str,
-        map_location: str = None,
-
-):
-    """Load checkpoint and return state."""
-    checkpoint = torch.load(path, map_location=map_location)
-
-    model.load_state_dict(checkpoint["model_state"])
-
-    start_epoch = checkpoint.get("epoch", 0)
-    start_step = checkpoint.get("step", 0)
-    device = checkpoint.get("device", "cpu")
-
-    if optimizer:
-        optimizer.load_state_dict(checkpoint["optimizer_state"])
-
-    return start_epoch, start_step, device
 
 def leyers_with_grad(model):
     for name, p in model.named_parameters():
