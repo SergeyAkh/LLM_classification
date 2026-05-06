@@ -10,6 +10,9 @@ from srs.LLM_classification.config import Config
 from model.GPT_full_model import GPT2Manager
 import dataset.Dataset_dataloader as DL
 
+# import importlib
+# import dataset.Dataset_dataloader as hf
+# importlib.reload(hf)
 
 def get_device():
     if torch.cuda.is_available():
@@ -42,18 +45,18 @@ def get_tokenizer():
     })
     return tokenizer
 
-def get_dataloader(tokenizer, dataset, batch_size, shuffle=False):
+def get_dataloader(tokenizer, dataset, batch_size, max_length, stride, shuffle=False):
 
     return DL.create_correct_dataloader(
         tokenizer=tokenizer,
         texts=dataset["text"].tolist(),
         batch_size=batch_size,
-        max_length=512,
-        stride=256,
+        max_length=max_length,
+        stride=stride,
         shuffle=shuffle
     )
 
-
+# custom_gpt2 or gpt2
 def get_model(model: str,
         tokenizer, lora = True, r = 8, alpha = 8, dropout = 0.05):
     if model == "gpt2":
@@ -69,7 +72,7 @@ def get_model(model: str,
                 target_modules=["c_attn", "c_proj"]  # GPT-2 specific
             )
             model = get_peft_model(model, lora_config)
-        print(f"Imported {model} with LoRA - {lora}")
+        print(f"Imported GPT2LMHeadModel model with LoRA = {lora}")
         return model
     elif model == "custom_gpt2":
         manager = GPT2Manager(use_lora=lora, r=r, alpha=alpha, dropout=dropout)
@@ -90,7 +93,7 @@ def load_checkpoint(model, optimizer, scheduler, path, device):
         checkpoint = torch.load(path, map_location=device)
         model.load_state_dict(checkpoint["model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
-        scheduler.load_state_dict(checkpoint["scheduler_state"])
+        # scheduler.load_state_dict(checkpoint["scheduler_state"])
         start_epoch = checkpoint.get("epoch", 0)
         start_step = checkpoint.get("step", 0)
         loss_for_save = checkpoint.get("loss", np.inf)
@@ -265,3 +268,43 @@ def check_one_batch(dataloader, tokenizer, INDEX):
 # for p in model.parameters():
 #     if p.requires_grad:
 #         print(p)
+
+    # Freeze all parameters first
+    # for param in model.parameters():
+    #     param.requires_grad = False
+    #
+    # for module in model.modules():
+    #     if module.__class__.__name__ == "MultiHeadAttention":
+    #         for param in module.parameters():
+    #             param.requires_grad = True
+    #
+    # for name, p in model.named_parameters():
+    #     if name in ["tok_emb.weight", "final_norm.scale"]:
+    #         p.requires_grad = True
+
+# CORRECT label creation for next-token prediction
+# examples = [
+# """<|user|> What is the capital of France? <|assistant|> The capital of France is Paris. <|endoftext|>""",
+#
+# """<|user|> What is 5 * 6? <|assistant|> 5 multiplied by 6 equals 30.<|endoftext|>""",
+#
+# """<|user|> Who wrote Hamlet? <|assistant|> William Shakespeare wrote Hamlet. <|endoftext|>""",
+#
+# """<|user|> What is the boiling point of water? <|assistant|> Water boils at 100 degrees Celsius under standard atmospheric pressure. <|endoftext|>""",
+#
+# """<|user|> Say good morning. <|assistant|> Good morning! <|endoftext|>""",
+#
+# """<|user|> What is the largest planet in our solar system? <|assistant|> The largest planet in our solar system is Jupiter. <|endoftext|>""",
+#
+# """<|user|> Convert 10 cm to meters. <|assistant|> 10 centimeters equals 0.1 meters. <|endoftext|>""",
+#
+# """<|user|> What is the opposite of hot? <|assistant|> The opposite of hot is cold. <|endoftext|>""",
+#
+# """<|user|> How many days are in a week? <|assistant|> There are 7 days in a week. <|endoftext|>""",
+#
+# """<|user|> Repeat "AI" five times. <|assistant|> AI AI AI AI AI. <|endoftext|>""",
+#
+# """<|user|> What is the capital of France? <|assistant|> The capital of France is Paris. <|endoftext|> <|user|> What about Germany? <|assistant|> The capital of Germany is Berlin. <|endoftext|>""",
+# """<|user|> What is 3 * 4?<|assistant|> 3 multiplied by 4 equals 12. <|endoftext|>""",
+# """<|user|> What is 2 * 8?<|assistant|> 2 multiplied by 8 equals 16. <|endoftext|>"""
+# ]

@@ -5,9 +5,10 @@ from model.GPT_manual_architecture import GPTModel, MultiHeadAttention, FeedForw
 from model.LoRA import LoRALinear
 import torch.nn as nn
 
-# import importlib
-# import model.GPT_manual_architecture as hf
-# importlib.reload(hf)
+import importlib
+import model.GPT_manual_architecture as hf
+importlib.reload(hf)
+
 class GPT2Manager:
     """
     Handles GPT-2 model initialization:
@@ -72,7 +73,9 @@ class GPT2Manager:
     def apply_lora(self, model, enabled=True):
 
         for module in model.modules():
-            if isinstance(module, MultiHeadAttention):
+
+            if module.__class__.__name__ == "MultiHeadAttention":
+
                 module.W_query = LoRALinear(
                     module.W_query, r=self.r, alpha=self.alpha, dropout=self.dropout
                 )
@@ -111,6 +114,7 @@ class GPT2Manager:
             self.loader.load_weights_into_gpt(self.model)
 
         if self.use_lora:
+
             self.apply_lora(self.model, enabled=True)
             self.freeze_except_lora(self.model)
 
@@ -120,6 +124,7 @@ class GPT2Manager:
             new_vocab_size = len(tokenizer)
 
             self.resize_token_embeddings(new_vocab_size)
+
             if self.use_lora:
                 self.freeze_except_lora(self.model)
             # self.base_config["vocab_size"] = new_vocab_size

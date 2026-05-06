@@ -20,10 +20,11 @@ class GELU(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        return 0.5 * x * (1 + torch.tanh(
-            math.sqrt(2.0 / math.pi) *
-            (x + 0.044715 * torch.pow(x, 3))
-        ))
+        # return 0.5 * x * (1 + torch.tanh(
+        #     math.sqrt(2.0 / math.pi) *
+        #     (x + 0.044715 * torch.pow(x, 3))
+        # ))
+        return torch.nn.functional.gelu(x)
 
 class LayerNorm(nn.Module):
     def __init__(self, emb_dim):
@@ -40,7 +41,7 @@ class LayerNorm(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=True):
         super().__init__()
         assert (d_out % num_heads == 0), \
             "d_out must be divisible by num_heads"
@@ -75,20 +76,16 @@ class MultiHeadAttention(nn.Module):
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
 
-        attn_scores = queries @ keys.transpose(2, 3)
+        attn_scores = (queries @ keys.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         mask_bool = self.mask[:num_tokens, :num_tokens].to(x.device).bool()
-
-        attn_scores.masked_fill_(mask_bool, -torch.inf)
+        attn_scores = attn_scores.masked_fill(mask_bool, -1e4)
 
         if attention_mask is not None:
-            # attention_mask: (b, seq_len)
             mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            # shape → (b, 1, 1, seq_len)
-            attn_scores = attn_scores.masked_fill(mask == 0, -torch.inf)
+            attn_scores = attn_scores.masked_fill(mask == 0, -1e4)
 
-        attn_weights = torch.softmax(attn_scores / keys.shape[-1] ** 0.5, dim=-1)
-        attn_weights = self.dropout(attn_weights)
+        attn_weights = torch.softmax(attn_scores, dim=-1)
 
         context_vec = (attn_weights @ values).transpose(1, 2)
 
@@ -145,11 +142,11 @@ class GPTModel(nn.Module):
             cfg["emb_dim"], cfg["vocab_size"], bias=False
         )
 
-    def forward(self, in_idx, attention_mask = None):
-        batch_size, seq_len = in_idx.shape
-        tok_embeds = self.tok_emb(in_idx)
+    def forward(self, input_ids, attention_mask = None):
+        batch_size, seq_len = input_ids.shape
+        tok_embeds = self.tok_emb(input_ids)
         # pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
-        pos = torch.arange(seq_len, device=in_idx.device).unsqueeze(0)
+        pos = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
         pos_embeds = self.pos_emb(pos)  # (1, seq, d)
         x = tok_embeds + pos_embeds
         x = self.drop_emb(x)

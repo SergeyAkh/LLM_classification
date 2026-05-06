@@ -10,7 +10,7 @@ from tqdm import tqdm
 class GPT2Loader:
     ALLOWED_SIZES = ("124M", "355M", "774M", "1558M")
 
-    def __init__(self, model_size="124M", models_dir="gpt2"):
+    def __init__(self, model_size=None, models_dir="gpt2"):
         if model_size not in self.ALLOWED_SIZES:
             raise ValueError(f"Model size not in {self.ALLOWED_SIZES}")
         self.model_size = model_size
