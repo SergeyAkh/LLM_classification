@@ -122,14 +122,14 @@ def preprop_oasst(preprop_oasst):
                 if role == "prompter":
                     lines.append(f"<|user|> {msg['text']}")
                 elif role == "assistant":
-                    lines.append(f"<|assistant|> {msg['text'] + "<|endoftext|>"}")
+                    lines.append(f"<|assistant|> {msg['text'] + " <|endoftext|>"}")
                 else:
                     lines.append(msg["text"])
 
             if len(lines) >= 2:
                 data.append({
                     "id": i,
-                    "text": "\n".join(lines)
+                    "text": " ".join(lines)
                 })
 
         return pd.DataFrame(data)
@@ -146,7 +146,7 @@ def get_data_preprocessed(config, split_ratio = 0.9, language = None):
     else:
         os.makedirs(config.PREPROC_DS, exist_ok=True)
 
-        # alp_df = alpaca_df(config)
+        alp_df = alpaca_df(config)
 
         df_tr, df_val = oasst1_df(config, language=language)
 
@@ -154,7 +154,7 @@ def get_data_preprocessed(config, split_ratio = 0.9, language = None):
 
         oasst_df = preprop_oasst(oasst_all)
 
-        df_all = pd.concat([oasst_df], ignore_index=True)
+        df_all = pd.concat([alp_df, oasst_df], ignore_index=True)
 
         # shuffle
         df_all = df_all.sample(frac=1, random_state=42).reset_index(drop=True)

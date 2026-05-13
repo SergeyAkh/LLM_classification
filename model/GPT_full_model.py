@@ -39,6 +39,8 @@ class GPT2Manager:
         self.model = None
 
     def resize_token_embeddings(self, new_vocab_size):
+        """Properly resize token embeddings and output head."""
+
         old_vocab_size, emb_dim = self.model.tok_emb.weight.shape
 
         if new_vocab_size <= old_vocab_size:
@@ -46,22 +48,48 @@ class GPT2Manager:
 
         device = self.model.tok_emb.weight.device
 
-        # --- tok_emb ---
+        # --- Create new embeddings ---
         new_tok_emb = nn.Embedding(new_vocab_size, emb_dim).to(device)
         new_tok_emb.weight.data[:old_vocab_size] = self.model.tok_emb.weight.data
         nn.init.normal_(new_tok_emb.weight.data[old_vocab_size:], mean=0.0, std=0.02)
 
-        self.model.tok_emb = new_tok_emb
-
-        # --- out_head ---
+        # --- Create new output head ---
         new_out_head = nn.Linear(emb_dim, new_vocab_size, bias=False).to(device)
         new_out_head.weight.data[:old_vocab_size] = self.model.out_head.weight.data
         nn.init.normal_(new_out_head.weight.data[old_vocab_size:], mean=0.0, std=0.02)
 
-        self.model.out_head = new_out_head
+        # --- CRITICAL: Register properly as modules ---
+        # Remove old modules first
+        delattr(self.model, 'tok_emb')
+        delattr(self.model, 'out_head')
 
-        # --- weight tying ---
-        self.model.out_head.weight = self.model.tok_emb.weight
+        # Add new modules (this registers them properly)
+        self.model.add_module('tok_emb', new_tok_emb)
+        self.model.add_module('out_head', new_out_head)
+    # def resize_token_embeddings(self, new_vocab_size):
+    #     old_vocab_size, emb_dim = self.model.tok_emb.weight.shape
+    #
+    #     if new_vocab_size <= old_vocab_size:
+    #         return
+    #
+    #     device = self.model.tok_emb.weight.device
+    #
+    #     # --- tok_emb ---
+    #     new_tok_emb = nn.Embedding(new_vocab_size, emb_dim).to(device)
+    #     new_tok_emb.weight.data[:old_vocab_size] = self.model.tok_emb.weight.data
+    #     nn.init.normal_(new_tok_emb.weight.data[old_vocab_size:], mean=0.0, std=0.02)
+    #
+    #     self.model.tok_emb = new_tok_emb
+    #
+    #     # --- out_head ---
+    #     new_out_head = nn.Linear(emb_dim, new_vocab_size, bias=False).to(device)
+    #     new_out_head.weight.data[:old_vocab_size] = self.model.out_head.weight.data
+    #     nn.init.normal_(new_out_head.weight.data[old_vocab_size:], mean=0.0, std=0.02)
+    #
+    #     self.model.out_head = new_out_head
+    #
+    #     # --- weight tying ---
+    #     self.model.out_head.weight = self.model.tok_emb.weight
 
     def freeze_except_lora(self, model):
         for name, param in model.named_parameters():
@@ -73,7 +101,6 @@ class GPT2Manager:
     def apply_lora(self, model, enabled=True):
 
         for module in model.modules():
-
             if module.__class__.__name__ == "MultiHeadAttention":
 
                 module.W_query = LoRALinear(

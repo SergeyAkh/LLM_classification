@@ -67,7 +67,7 @@ def run_epoch(
             # skip logic (only relevant for training resume)
             if is_train and epoch == start_epoch and step <= start_step:
                 continue
-            torch.mps.empty_cache()
+
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)

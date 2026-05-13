@@ -11,7 +11,7 @@ from model.GPT_full_model import GPT2Manager
 import dataset.Dataset_dataloader as DL
 
 # import importlib
-# import dataset.Dataset_dataloader as hf
+# import model.GPT_full_model as hf
 # importlib.reload(hf)
 
 def get_device():
@@ -133,7 +133,7 @@ def move_to_device(obj, device):
 def leyers_with_grad(model):
     for name, p in model.named_parameters():
         if p.requires_grad:
-            print(f"{name} -> {p.requires_grad}")
+            print(f"{name} -> {p.requires_grad} -> {p.numel()}")
     print(f"Total trained param: {sum(p.numel() for name, p in model.named_parameters() if p.requires_grad)}")
 
 

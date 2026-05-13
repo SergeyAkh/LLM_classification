@@ -39,7 +39,7 @@ def build_prompt(history):
 def temp_predict(model_name, model, prompt, tokenizer, device, temperature=1.0, max_new_tokens=50):
     model.eval()
 
-    prompt = f"<|user|>{prompt}<|assistant|>"
+    prompt = f"{prompt}"
     input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
 
     with torch.no_grad():
@@ -61,6 +61,7 @@ def temp_predict(model_name, model, prompt, tokenizer, device, temperature=1.0, 
     # response = tokenizer.decode(new_tokens)
     decoded = tokenizer.decode(input_ids[0])
     decoded = decoded.split("<|assistant|>")[-1].strip()
+    model.train()
     return decoded.split("<|endoftext|>")[0]
 
 
