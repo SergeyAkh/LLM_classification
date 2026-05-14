@@ -6,7 +6,7 @@ from torch.optim import AdamW
 device = get_device()
 device = torch.device("mps")
 MAX_NEW_TOKENS = 100
-TEMPERATURE = 0.1
+TEMPERATURE = 0.8
 TOP_K = 50
 
 # ---- Load tokenizer ----

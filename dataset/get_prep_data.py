@@ -122,7 +122,7 @@ def preprop_oasst(preprop_oasst):
                 if role == "prompter":
                     lines.append(f"<|user|> {msg['text']}")
                 elif role == "assistant":
-                    lines.append(f"<|assistant|> {msg['text'] + " <|endoftext|>"}")
+                    lines.append(f"<|assistant|> {msg['text']}")
                 else:
                     lines.append(msg["text"])
 
@@ -135,10 +135,11 @@ def preprop_oasst(preprop_oasst):
         return pd.DataFrame(data)
 
     treads = threads_to_text_df(threads)
-
+    treads["text"] = (treads["text"] + " <|endoftext|>")
     return treads
 
-def get_data_preprocessed(config, split_ratio = 0.9, language = None):
+def get_data_preprocessed(config, split_ratio = 0.9, data = "all", language = None):
+
     if os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv")) and os.path.exists(os.path.join(config.PREPROC_DS, "Preprocessed_val_data.csv")):
 
         train = pd.read_csv(os.path.join(config.PREPROC_DS, "Preprocessed_data.csv"))
@@ -146,15 +147,20 @@ def get_data_preprocessed(config, split_ratio = 0.9, language = None):
     else:
         os.makedirs(config.PREPROC_DS, exist_ok=True)
 
-        alp_df = alpaca_df(config)
-
-        df_tr, df_val = oasst1_df(config, language=language)
-
-        oasst_all = pd.concat([df_tr, df_val], ignore_index=True)
-
-        oasst_df = preprop_oasst(oasst_all)
-
-        df_all = pd.concat([alp_df, oasst_df], ignore_index=True)
+        if data == "alpaca":
+            alp_df = alpaca_df(config)
+            df_all = pd.concat([alp_df], ignore_index=True)
+        elif data == "oasst1":
+            df_tr, df_val = oasst1_df(config, language=language)
+            oasst_all = pd.concat([df_tr, df_val], ignore_index=True)
+            oasst_df = preprop_oasst(oasst_all)
+            df_all = pd.concat([oasst_df], ignore_index=True)
+        elif data == "all":
+            alp_df = alpaca_df(config)
+            df_tr, df_val = oasst1_df(config, language=language)
+            oasst_all = pd.concat([df_tr, df_val], ignore_index=True)
+            oasst_df = preprop_oasst(oasst_all)
+            df_all = pd.concat([alp_df, oasst_df], ignore_index=True)
 
         # shuffle
         df_all = df_all.sample(frac=1, random_state=42).reset_index(drop=True)
