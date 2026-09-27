@@ -18,15 +18,15 @@ def alpaca_df(config) -> pd.DataFrame:
 
     df['input'] = df['input'].fillna('')
     df['user_text'] = df.apply(
-        lambda x: f"<|user|> {x['instruction']}" + (f" {x['input']}" if x['input'] else ""),
+        lambda x: f"<|user|>\n{x['instruction']}" + (f" {x['input']}" if x['input'] else ""),
         axis=1
     )
 
     df['full_text'] = (
             df['user_text'] +
-            " <|assistant|> " +
-            df['output'] +
-            " <|endoftext|>"
+            "\n<|assistant|> " +
+            "\n" + df['output'] +
+            "\n<|endoftext|>"
     )
     df["text"] = df[['full_text']]
     df_new = df.drop(["instruction", "input","user_text","full_text","output"], axis=1)
@@ -120,9 +120,9 @@ def preprop_oasst(preprop_oasst):
                 role = msg.get("role", "user")  # fallback if missing
 
                 if role == "prompter":
-                    lines.append(f"<|user|> {msg['text']}")
+                    lines.append(f"<|user|>\n{msg['text']}")
                 elif role == "assistant":
-                    lines.append(f"<|assistant|> {msg['text']}")
+                    lines.append(f"<|assistant|>\n{msg['text']}")
                 else:
                     lines.append(msg["text"])
 
@@ -135,7 +135,7 @@ def preprop_oasst(preprop_oasst):
         return pd.DataFrame(data)
 
     treads = threads_to_text_df(threads)
-    treads["text"] = (treads["text"] + " <|endoftext|>")
+    treads["text"] = (treads["text"] + "\n<|endoftext|>")
     return treads
 
 def get_data_preprocessed(config, split_ratio = 0.9, data = "all", language = None):

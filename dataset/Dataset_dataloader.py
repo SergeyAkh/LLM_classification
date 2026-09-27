@@ -57,8 +57,8 @@ class CorrectChatDataset(Dataset):
             input_tokens = chunk_tokens[:]
             target_tokens = chunk_tokens[:]
 
-            # labels = [IGNORE_INDEX] * len(target_tokens)
-            labels = input_tokens
+            labels = [IGNORE_INDEX] * len(target_tokens)
+            # labels = input_tokens
 
             current_role = None
 
