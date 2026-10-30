@@ -10,9 +10,9 @@ from srs.LLM_classification.config import Config
 from model.GPT_full_model import GPT2Manager
 import dataset.Dataset_dataloader as DL
 
-# import importlib
-# import model.GPT_full_model as hf
-# importlib.reload(hf)
+import importlib
+import model.GPT_full_model as hf
+importlib.reload(hf)
 
 def get_device():
     if torch.cuda.is_available():

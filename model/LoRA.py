@@ -12,8 +12,6 @@ class LoRALinear(nn.Module):
         self.scaling = alpha / r
         in_dim = linear_layer.in_features
         out_dim = linear_layer.out_features
-        # self.A = nn.Parameter(torch.empty(r, in_dim))
-        # self.B = nn.Parameter(torch.randn(out_dim, r) * 0.01)
         self.A = nn.Parameter(torch.randn(r, in_dim) * 0.01)  # small
         self.B = nn.Parameter(torch.zeros(out_dim, r))  # start at zero
         self.dropout = nn.Dropout(dropout)

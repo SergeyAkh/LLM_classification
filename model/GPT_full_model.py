@@ -3,6 +3,7 @@ from srs.LLM_classification.config import Config
 from model.Load_model import GPT2Loader
 from model.GPT_manual_architecture import GPTModel, MultiHeadAttention, FeedForward
 from model.LoRA import LoRALinear
+from model.DoRA import DoRALinear
 import torch.nn as nn
 
 import importlib
@@ -17,7 +18,7 @@ class GPT2Manager:
     - Builds PyTorch GPT model
     """
 
-    def __init__(self, use_lora=True, r=8, alpha = 1, dropout=0.05):
+    def __init__(self, use_lora=None, r=8, alpha = 1, dropout=0.05):
         # Load configuration
         self.r = r
         self.alpha = alpha
@@ -67,7 +68,7 @@ class GPT2Manager:
         self.model.add_module('tok_emb', new_tok_emb)
         self.model.add_module('out_head', new_out_head)
 
-    def freeze_except_lora(self, model):
+    def freeze_except_adapter(self, model):
         for name, param in model.named_parameters():
             if "A" in name or "B" in name:
                 param.requires_grad = True
@@ -105,6 +106,75 @@ class GPT2Manager:
                         module.layers[i] = LoRALinear(layer, r=self.r, alpha=self.alpha, dropout=self.dropout)
                         module.layers[i].enabled = enabled
 
+    def apply_dora(self, model, enabled=True):
+
+        for module in model.modules():
+            if module.__class__.__name__ == "MultiHeadAttention":
+
+                module.W_query = DoRALinear(
+                    module.W_query, r=self.r, alpha=self.alpha, dropout=self.dropout
+                )
+                module.W_query.enabled = enabled
+
+                module.W_value = DoRALinear(
+                    module.W_value, r=self.r, alpha=self.alpha, dropout=self.dropout
+                )
+                module.W_value.enabled = enabled
+
+                module.W_key = DoRALinear(
+                    module.W_key, r=self.r, alpha=self.alpha, dropout=self.dropout
+                )
+                module.W_key.enabled = enabled
+
+                module.out_proj = DoRALinear(
+                    module.out_proj, r=self.r, alpha=self.alpha, dropout=self.dropout
+                )
+                # module.out_proj.enabled = enabled
+
+            elif isinstance(module, FeedForward):
+                for i, layer in enumerate(module.layers):
+                    if isinstance(layer, nn.Linear):
+                        module.layers[i] = DoRALinear(layer, r=self.r, alpha=self.alpha, dropout=self.dropout)
+                        # module.layers[i].enabled = enabled
+        # for module in list(model.modules()):
+        #
+        #     if isinstance(module, MultiHeadAttention):
+        #
+        #         for name in (
+        #                 "W_query",
+        #                 "W_key",
+        #                 "W_value",
+        #                 "out_proj",
+        #         ):
+        #             layer = getattr(module, name)
+        #
+        #             setattr(
+        #                 module,
+        #                 name,
+        #                 DoRALinear(
+        #                     layer,
+        #                     r=self.r,
+        #                     alpha=self.alpha,
+        #                     dropout=self.dropout,
+        #                 ),
+        #             )
+        #
+        #             getattr(module, name).enabled = enabled
+        #
+        #     elif isinstance(module, FeedForward):
+        #
+        #         for i, layer in enumerate(module.layers):
+        #
+        #             if isinstance(layer, nn.Linear):
+        #                 module.layers[i] = DoRALinear(
+        #                     layer,
+        #                     r=self.r,
+        #                     alpha=self.alpha,
+        #                     dropout=self.dropout,
+        #                 )
+        #
+        #                 module.layers[i].enabled = enabled
+
     def prepare_model(self, tokenizer, inference = None):
         self.loader = GPT2Loader(model_size=self.model_size, models_dir=self.path)
 
@@ -113,23 +183,26 @@ class GPT2Manager:
         self.model = GPTModel(self.base_config)
 
         if inference is None:
-
             self.loader.load_weights_into_gpt(self.model)
 
-        if self.use_lora:
+        if self.use_lora == "DoRA":
+            self.apply_dora(self.model, enabled=True)
+            # self.freeze_except_adapter(self.model)
+
+
+        if self.use_lora == "LoRA":
 
             self.apply_lora(self.model, enabled=True)
-            self.freeze_except_lora(self.model)
+            self.freeze_except_adapter(self.model)
 
-        # 🔥 New tokens
         if tokenizer is not None:
 
             new_vocab_size = len(tokenizer)
 
             self.resize_token_embeddings(new_vocab_size)
 
-            if self.use_lora:
-                self.freeze_except_lora(self.model)
+            if self.use_lora in ("LoRA", "DoRA"):
+                self.freeze_except_adapter(self.model)
             # self.base_config["vocab_size"] = new_vocab_size
         else:
             abort()
